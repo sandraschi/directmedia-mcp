@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "directmedia": {
+      "command": "python",
+      "args": [
+        "-m",
+        "directmedia_mcp.server",
+        "--library-path",
+        "L:\\Multimedia Files\\Written Word\\Digitale Bibliothek"
+      ],
+      "env": {
+        "PYTHONPATH": "D:\\Dev\\repos\\directmedia-mcp\\src"
+      }
+    }
+  }
+}
+
