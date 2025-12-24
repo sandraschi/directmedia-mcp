@@ -377,11 +377,11 @@ def create_single_epub(book_data: Dict[str, Any], output_dir: Union[str, Path]) 
                 description=description
             ))
 
-        print(f"✓ Created EPUB: {filename}")
+        print(f"[OK] Created EPUB: {filename}")
         return True
 
     except Exception as e:
-        print(f"✗ Error creating {filename}: {e}")
+        print(f"[ERROR] Error creating {filename}: {e}")
         return False
 
 
@@ -491,8 +491,7 @@ def batch_convert_library(library_path: Union[str, Path],
     except Exception as e:
         results["errors"].append(f"Batch conversion failed: {str(e)}")
 
-    print("
-Batch conversion complete:")
+    print("\nBatch conversion complete:")
     print(f"  Volumes processed: {results['total_volumes_processed']}")
     print(f"  EPUB files created: {results['epub_files_created']}")
     print(f"  Output directory: {results['output_dir']}")
