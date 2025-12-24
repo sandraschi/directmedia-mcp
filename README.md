@@ -31,6 +31,9 @@ The Directmedia Publishing "Digitale Bibliothek" was a pioneering German electro
 - **Proprietary binary format** from 1990s German publishing
 - **Latin-1 encoding** with special characters for German texts
 
+### ⚠️ **Legal Requirement**
+**You must legally purchase the Directmedia CD-ROMs to use this tool. See Legal Notice section below.**
+
 ### 🗂️ Sample Volumes
 | Volume ID | Title | Size | Content Type |
 |-----------|-------|------|--------------|
@@ -180,6 +183,31 @@ This is a research project to preserve and provide access to classic digital lit
 - Decompression algorithms
 - Search optimization
 - Documentation improvements
+
+## ⚖️ **Legal Notice & Copyright**
+
+### **Important: Legal Use Required**
+
+This software tool is designed to work with **legally purchased** copies of Directmedia Publishing's "Digitale Bibliothek" CD-ROM collection. **You must own legitimate copies of the CD-ROMs to use this tool legally.**
+
+#### **Where to Purchase**
+Directmedia Publishing still operates and offers their complete collection:
+
+- **Official Website**: [https://www.directmedia-publishing.de/](https://www.directmedia-publishing.de/)
+- **Product**: "Digitale Bibliothek" (Complete 101-volume collection)
+- **Format**: Available as digital downloads and physical media
+- **Languages**: German literature and philosophy collections
+
+#### **Copyright Notice**
+- **Copyright**: © Directmedia Publishing GmbH
+- **Content**: All text, images, and multimedia content remain copyrighted
+- **Usage**: Personal, educational, and research use permitted with legal copies
+- **Redistribution**: Not permitted without explicit permission
+
+#### **Disclaimer**
+This tool is provided for **educational and research purposes** to access legally obtained digital content. The authors are not responsible for misuse of this software. Ensure you comply with all applicable copyright laws in your jurisdiction.
+
+**Pirated or illegally obtained content is not supported and may violate copyright law.**
 
 ## 📜 License
 
