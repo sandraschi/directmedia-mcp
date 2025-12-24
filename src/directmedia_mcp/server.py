@@ -12,6 +12,7 @@ from fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
 from .library import DirectmediaLibrary
+from .epub_converter import convert_volume_to_epub, batch_convert_library
 from .logging_config import get_logger
 
 logger = get_logger("directmedia_mcp")
@@ -210,6 +211,86 @@ async def set_library_path(path: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error setting library path: {e}")
         return {"error": f"Failed to initialize library: {str(e)}"}
+
+
+@mcp.tool()
+async def convert_volume_to_epub_file(volume_id: str, output_dir: str) -> Dict[str, Any]:
+    """
+    Convert a Directmedia volume to EPUB format for e-book readers
+
+    Args:
+        volume_id: Volume identifier (e.g., 'DB002')
+        output_dir: Directory where EPUB file will be created
+
+    Returns:
+        Conversion results with file path and status
+    """
+    try:
+        if not library:
+            return {"error": "Library not initialized. Use set_library_path first."}
+
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Convert volume to EPUB
+        result = convert_volume_to_epub(library.base_path, volume_id, output_dir)
+
+        if result.get("epub_files_created", 0) > 0:
+            return {
+                "success": True,
+                "volume_id": volume_id,
+                "epub_files_created": result["epub_files_created"],
+                "output_dir": result["output_dir"],
+                "message": f"Successfully converted volume {volume_id} to EPUB format"
+            }
+        else:
+            return {
+                "success": False,
+                "volume_id": volume_id,
+                "errors": result.get("errors", ["Unknown error"]),
+                "message": f"Failed to convert volume {volume_id}"
+            }
+
+    except Exception as e:
+        logger.error(f"Error converting volume {volume_id} to EPUB: {e}")
+        return {"error": f"EPUB conversion failed: {str(e)}"}
+
+
+@mcp.tool()
+async def batch_convert_to_epub(output_dir: str, volume_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+    """
+    Convert multiple Directmedia volumes to EPUB format
+
+    Args:
+        output_dir: Directory where EPUB files will be created
+        volume_ids: Optional list of specific volume IDs to convert (converts all if None)
+
+    Returns:
+        Batch conversion results
+    """
+    try:
+        if not library:
+            return {"error": "Library not initialized. Use set_library_path first."}
+
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Perform batch conversion
+        result = batch_convert_library(library.base_path, output_dir, volume_ids)
+
+        return {
+            "success": True,
+            "volumes_processed": result["total_volumes_processed"],
+            "epub_files_created": result["epub_files_created"],
+            "volumes_converted": result["volumes_converted"],
+            "output_dir": result["output_dir"],
+            "errors": result.get("errors", []),
+            "message": f"Batch conversion complete: {result['epub_files_created']} EPUB files created"
+        }
+
+    except Exception as e:
+        logger.error(f"Error in batch EPUB conversion: {e}")
+        return {"error": f"Batch conversion failed: {str(e)}"}
 
 
 def main():

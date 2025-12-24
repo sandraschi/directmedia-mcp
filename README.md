@@ -119,6 +119,10 @@ directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Biblio
 - `get_text_content(volume_id, start_pos, length)` - Extract text
 - `get_navigation_tree(volume_id)` - Get table of contents
 
+### EPUB Conversion ⭐ **NEW**
+- `convert_volume_to_epub_file(volume_id, output_dir)` - Convert single volume to EPUB
+- `batch_convert_to_epub(output_dir, volume_ids)` - Convert multiple volumes to EPUB
+
 ### Analysis
 - `analyze_volume_structure(volume_id)` - File format analysis
 
@@ -163,9 +167,58 @@ directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Biblio
 
 - [x] **TEXT.DKI Decompression**: Successfully reversed structured binary record format
 - [x] **Text Extraction**: Working decompressor extracts readable German text
+- [x] **EPUB Conversion**: Convert volumes to modern e-book format
 - [x] **MCP Integration**: Full programmatic access via FastMCP server
 - [x] **Volume Management**: Complete 101-volume library access
 - [x] **TREE.DKI Navigation**: Table of contents successfully parsed
+
+## 📖 **EPUB Conversion Feature**
+
+Convert extracted Directmedia text content into modern EPUB format for e-book readers!
+
+### **What It Does**
+- **Extracts** readable text from Directmedia `.DKI` files
+- **Formats** content with proper HTML structure and CSS styling
+- **Creates** valid EPUB 3.0 files compatible with all e-book readers
+- **Preserves** German text encoding and special characters
+- **Adds** metadata including title, author, and volume information
+
+### **EPUB Features**
+- **Proper Structure**: Mimetype, container.xml, OPF package, navigation
+- **German Typography**: Optimized for German text with proper quotes and spacing
+- **Responsive Design**: CSS styling that works on all devices
+- **Table of Contents**: Navigation structure for easy browsing
+- **Metadata**: Complete Dublin Core metadata for library management
+
+### **Usage Examples**
+
+**Convert single volume:**
+```bash
+# Via MCP tool
+convert_volume_to_epub_file("DB002", "./epub_output")
+```
+
+**Batch convert multiple volumes:**
+```bash
+# Via MCP tool
+batch_convert_to_epub("./epub_library", ["DB002", "DB003", "DB004"])
+```
+
+### **Output Example**
+```
+epub_output/
+├── Goethe - Faust.epub          # Volume DB004
+├── Heine - Buch der Lieder.epub # Volume DB007
+└── ... (more volumes)
+```
+
+### **EPUB Reader Compatibility**
+- ✅ **Calibre** (recommended for library management)
+- ✅ **Apple Books** (iOS/macOS)
+- ✅ **Google Play Books**
+- ✅ **Kindle** (via conversion)
+- ✅ **Adobe Digital Editions**
+- ✅ **All major e-book readers**
 
 ### Future Enhancements
 
