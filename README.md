@@ -1,10 +1,11 @@
 # Directmedia MCP 📚
 
-[![Python](https://img.shields.io/badge/Python-3.11+-green)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.10+-green)](https://python.org)
 [![FastMCP](https://img.shields.io/badge/FastMCP-2.13+-blue)](https://github.com/jlowin/fastmcp)
 [![Volumes](https://img.shields.io/badge/Volumes-101-orange)](README.md)
 [![Size](https://img.shields.io/badge/Size-14GB-blue)](README.md)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![GitHub](https://img.shields.io/badge/GitHub-sandraschi/directmedia--mcp-blue)](https://github.com/sandraschi/directmedia-mcp)
 
 **FastMCP 2.13+ server for accessing Directmedia Publishing "Digitale Bibliothek"**
 
