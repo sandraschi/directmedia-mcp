@@ -2,16 +2,28 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10+-green)](https://python.org)
 [![FastMCP](https://img.shields.io/badge/FastMCP-2.13+-blue)](https://github.com/jlowin/fastmcp)
+[![Text Extraction](https://img.shields.io/badge/Text%20Extraction-WORKING-brightgreen)](README.md)
 [![Volumes](https://img.shields.io/badge/Volumes-101-orange)](README.md)
 [![Size](https://img.shields.io/badge/Size-14GB-blue)](README.md)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 [![GitHub](https://img.shields.io/badge/GitHub-sandraschi/directmedia--mcp-blue)](https://github.com/sandraschi/directmedia-mcp)
 
-**FastMCP 2.13+ server for accessing Directmedia Publishing "Digitale Bibliothek"**
+**FastMCP 2.13+ server for accessing Directmedia Publishing "Digitale Bibliothek" - TEXT EXTRACTION WORKING!**
 
 ## 🎯 Overview
 
 The Directmedia Publishing "Digitale Bibliothek" was a pioneering German electronic book collection from the 1990s, containing extensive German literature and world literature. This MCP server provides programmatic access to these classic digital books.
+
+### ✅ **BREAKTHROUGH: Text Extraction Working!**
+
+**MISSION ACCOMPLISHED**: We successfully reversed the Directmedia TEXT.DKI format!
+
+- **Discovery**: TEXT.DKI files contain **structured binary records**, not compressed data
+- **Decompressor**: Working Python implementation extracts readable German text
+- **Access**: 101 volumes of 1990s literature now programmatically accessible
+- **Preservation**: Digital cultural heritage unlocked for modern use
+
+**What was thought to be "compression" was actually a structured record format with 2-byte length headers!**
 
 ### 📊 Collection Status
 - **101 volumes** discovered (DB002-DB161, DBSK01-DBSK05, DBSO01-DBSO28)
@@ -42,7 +54,7 @@ The Directmedia Publishing "Digitale Bibliothek" was a pioneering German electro
 Each volume uses a proprietary binary format:
 
 #### Core Files (Data/):
-- **TEXT.DKI**: Main text database (compressed full text)
+- **TEXT.DKI**: Main text database (structured binary records)
 - **TREE.DK***: Navigation tree (table of contents)
 - **INDEX.***: Multiple search indices (HTX, PLX, SHX, SWX, TTX, WLX)
 - **LINKS.***: Hyperlinks and cross-references
@@ -122,9 +134,9 @@ directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Biblio
 ### Binary Format Analysis
 
 **TEXT.DKI Structure:**
-- Header: 64 bytes with offset table
-- Content: Compressed German text (Latin-1 encoding)
-- Multiple sections with different compression
+- Header: 256 bytes with section offset table
+- Content: Structured binary records (not compressed!)
+- Each record: 2-byte length + 1-byte type + text content
 
 **TREE.DK* Structure:**
 - DKA: Navigation tree with entry counts and offsets
@@ -140,15 +152,22 @@ directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Biblio
 ### Known Limitations
 
 1. **Proprietary Format**: No official documentation available
-2. **Compression**: Text content uses unknown compression algorithm
+2. **Advanced Features**: Some INDEX and TREE.DK* structures still being analyzed
 3. **Encoding**: Primarily Latin-1 with some UTF-8 elements
-4. **Navigation**: Tree structure not fully decoded yet
+4. **Media Content**: Images and audio files not yet processed
+
+### Recent Achievements ✅
+
+- [x] **TEXT.DKI Decompression**: Successfully reversed structured binary record format
+- [x] **Text Extraction**: Working decompressor extracts readable German text
+- [x] **MCP Integration**: Full programmatic access via FastMCP server
+- [x] **Volume Management**: Complete 101-volume library access
+- [x] **TREE.DKI Navigation**: Table of contents successfully parsed
 
 ### Future Enhancements
 
-- [ ] Full TEXT.DKI decompression algorithm
-- [ ] Complete INDEX file parsing
-- [ ] TREE.DK* structure decoding
+- [ ] Complete INDEX file parsing for full-text search
+- [ ] TREE.DK* advanced structure decoding
 - [ ] Cross-volume search optimization
 - [ ] Image extraction and processing
 - [ ] Audio file handling
