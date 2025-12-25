@@ -254,22 +254,37 @@ class DirectmediaLibrary:
             return {"error": f"Failed to read text: {str(e)}"}
 
     def get_navigation_tree(self, volume_id: str) -> Dict[str, Any]:
-        """Get navigation tree for a volume"""
+        """Get navigation tree (table of contents) for a volume"""
 
         volume = self.get_volume_info(volume_id)
         if not volume:
             return {"error": f"Volume {volume_id} not found"}
 
-        tree_dka_path = self.library_path / volume_id / "Data" / "TREE.DKA"
         tree_dki_path = self.library_path / volume_id / "Data" / "TREE.DKI"
 
         tree_info = {
             "volume_id": volume_id,
             "tree_files": {},
-            "structure": "unknown"
+            "structure": "unknown",
+            "table_of_contents": []
         }
 
-        # Analyze TREE.DKA
+        # Parse TREE.DKI for table of contents
+        if tree_dki_path.exists():
+            try:
+                toc_entries = self._parse_tree_dki(tree_dki_path)
+                tree_info["structure"] = "hierarchical_text"
+                tree_info["table_of_contents"] = toc_entries
+                tree_info["tree_files"]["TREE.DKI"] = {
+                    "size": tree_dki_path.stat().st_size,
+                    "entries": len(toc_entries)
+                }
+            except Exception as e:
+                logger.warning(f"Error parsing TREE.DKI: {e}")
+                tree_info["error"] = str(e)
+
+        # Analyze TREE.DKA (structural information)
+        tree_dka_path = self.library_path / volume_id / "Data" / "TREE.DKA"
         if tree_dka_path.exists():
             try:
                 with open(tree_dka_path, 'rb') as f:
@@ -278,26 +293,54 @@ class DirectmediaLibrary:
                         num_entries = struct.unpack('<I', header[:4])[0]
                         data_offset = struct.unpack('<I', header[4:8])[0]
                         tree_info["tree_files"]["TREE.DKA"] = {
-                            "size": tree_dka_path.stat().size,
+                            "size": tree_dka_path.stat().st_size,
                             "num_entries": num_entries,
                             "data_offset": data_offset
                         }
             except Exception as e:
-                logger.warning(f"Error reading TREE.DKA for {volume_id}: {e}")
-
-        # Analyze TREE.DKI
-        if tree_dki_path.exists():
-            try:
-                with open(tree_dki_path, 'rb') as f:
-                    header = f.read(64)
-                    tree_info["tree_files"]["TREE.DKI"] = {
-                        "size": tree_dki_path.stat().size,
-                        "header_hex": header.hex()[:32]
-                    }
-            except Exception as e:
-                logger.warning(f"Error reading TREE.DKI for {volume_id}: {e}")
+                logger.warning(f"Error analyzing TREE.DKA: {e}")
 
         return tree_info
+
+    def _parse_tree_dki(self, tree_dki_path: Path) -> List[Dict[str, Any]]:
+        """Parse TREE.DKI file to extract hierarchical table of contents"""
+
+        with open(tree_dki_path, 'rb') as f:
+            data = f.read()
+
+        toc_entries = []
+        current_line = []
+        i = 0
+
+        while i < len(data):
+            if data[i] == 0x0D and i + 1 < len(data) and data[i + 1] == 0x0A:  # CRLF
+                # End of line
+                if current_line:
+                    line_bytes = bytes(current_line)
+                    try:
+                        line_text = line_bytes.decode('latin-1', errors='replace').rstrip()
+                        if line_text.strip():  # Skip empty lines
+                            # Calculate indentation level (number of leading spaces)
+                            indent_level = len(line_text) - len(line_text.lstrip(' '))
+                            clean_text = line_text.strip()
+
+                            toc_entries.append({
+                                "text": clean_text,
+                                "level": indent_level // 2,  # Each level uses 2 spaces
+                                "offset": len(toc_entries)  # Sequential index
+                            })
+                    except UnicodeDecodeError:
+                        pass
+                    current_line = []
+                i += 2
+            elif data[i] >= 32 and data[i] <= 255:  # Printable character
+                current_line.append(data[i])
+                i += 1
+            else:
+                # Skip control characters
+                i += 1
+
+        return toc_entries
 
     def analyze_volume_structure(self, volume_id: str) -> Dict[str, Any]:
         """Analyze the file structure of a volume"""
