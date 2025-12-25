@@ -9,6 +9,7 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 
 from .logging_config import get_logger
+from .directmedia_decompressor import DirectmediaDecompressor
 
 logger = get_logger("directmedia_mcp.library")
 
@@ -214,26 +215,39 @@ class DirectmediaLibrary:
             return {"error": f"TEXT.DKI not found for volume {volume_id}. Tried: {[str(p) for p in possible_paths]}"}
 
         try:
-            with open(text_dki_path, 'rb') as f:
-                f.seek(start_pos)
-                data = f.read(length)
+            # Use the proper decompressor to extract text content
+            decompressor = DirectmediaDecompressor()
+            result = decompressor.extract_text_content(text_dki_path, max_sections=10)
 
-                # Try to decode as Latin-1 (common for German text)
-                try:
-                    text = data.decode('latin-1')
-                except UnicodeDecodeError:
-                    # Fallback to ignoring errors
-                    text = data.decode('latin-1', errors='replace')
+            # Combine all extracted text from sections
+            all_text_parts = []
+            total_records = 0
 
-                # Replace problematic characters that can't be displayed
-                text = text.replace('\x95', '•').replace('\x96', '–').replace('\x97', '—')
+            for section in result['extracted_sections']:
+                if 'records' in section:
+                    for record in section['records']:
+                        if 'text_content' in record and record['text_content']:
+                            all_text_parts.append(record['text_content'])
+                            total_records += 1
 
-                return {
-                    "volume_id": volume_id,
-                    "start_position": start_pos,
-                    "length": len(data),
-                    "content": text
-                }
+            # Combine all text
+            full_text = '\n\n'.join(all_text_parts)
+
+            # Apply start_pos and length limits if specified
+            if start_pos > 0:
+                full_text = full_text[start_pos:]
+            if len(full_text) > length:
+                full_text = full_text[:length]
+
+            return {
+                "volume_id": volume_id,
+                "start_position": start_pos,
+                "length": len(full_text.encode('utf-8')),
+                "content": full_text,
+                "sections_processed": len(result['extracted_sections']),
+                "total_records_found": total_records,
+                "extraction_errors": len(result.get('errors', []))
+            }
 
         except Exception as e:
             logger.error(f"Error reading text from {volume_id}: {e}")

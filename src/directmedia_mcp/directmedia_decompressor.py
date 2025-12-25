@@ -407,29 +407,73 @@ class DirectmediaDecompressor:
             file_size = analysis['file_size']
             file_data = f.read()
 
-            # Simplified approach: scan for readable text blocks
-            text_blocks = self._extract_readable_text_blocks(file_data, max_blocks=max_sections*10)
+            # Parse Directmedia TEXT.DKI format properly
+            # Main pattern: \x1b\x01 + length_byte + text_bytes (Latin-1 encoded German)
+            text_records = []
+            i = 0
+            while i < len(file_data) - 10 and len(text_records) < max_sections * 200:
 
-            if text_blocks:
-                # Group text blocks into sections for compatibility
-                section_size = max(1, len(text_blocks) // max_sections)
-                for i in range(0, len(text_blocks), section_size):
-                    section_blocks = text_blocks[i:i+section_size]
-                    combined_text = '\n\n'.join(block['text'] for block in section_blocks)
+                # Main text extraction pattern: \x1b\x01 + length + text
+                if file_data[i:i+2] == b'\x1b\x01':
+                    length_byte = file_data[i+2]
+                    if 2 <= length_byte <= 50:  # Reasonable German word/phrase length
+                        text_start = i + 3
+                        text_end = text_start + length_byte
+                        if text_end <= len(file_data):
+                            text_bytes = file_data[text_start:text_end]
+                            try:
+                                # Decode as Latin-1 (standard for German text in this era)
+                                text = text_bytes.decode('latin-1', errors='strict')
 
-                    result['extracted_sections'].append({
-                        'section_id': i // section_size,
-                        'offset': section_blocks[0]['offset'],
-                        'original_size': sum(block['length'] for block in section_blocks),
-                        'records_found': len(section_blocks),
-                        'records': [{
-                            'offset': block['offset'],
-                            'text_content': block['text'],
-                            'text_length': len(block['text'])
-                        } for block in section_blocks[:10]]  # First 10 blocks
-                    })
+                                # Strict validation: must be readable German text
+                                # Allow letters, spaces, German chars, basic punctuation
+                                valid_chars = set('abcdefghijklmnopqrstuvwxyzäöüßABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜẞ .,;:!?-()[]{}"\'')
 
-                    result['total_extracted_size'] += len(combined_text)
+                                if (all(c in valid_chars for c in text) and
+                                    any(c.isalpha() for c in text) and  # Must contain letters
+                                    len(text.strip()) >= 2 and         # Minimum length
+                                    not text.isdigit()):               # Not just numbers
+
+                                    text_records.append({
+                                        'offset': i,
+                                        'length': length_byte,
+                                        'text': text.strip(),
+                                        'pattern': '1b01_latin1',
+                                        'raw_bytes': text_bytes
+                                    })
+
+                            except UnicodeDecodeError:
+                                # Skip invalid UTF-8 sequences
+                                pass
+
+                    i += 3 + max(1, length_byte)
+                else:
+                    i += 1
+
+            # Group records into sections
+            if text_records:
+                section_size = max(1, len(text_records) // max_sections)
+                for section_idx in range(max_sections):
+                    start_idx = section_idx * section_size
+                    end_idx = min(start_idx + section_size, len(text_records))
+                    section_records = text_records[start_idx:end_idx]
+
+                    if section_records:
+                        combined_text = ' '.join(record['text'] for record in section_records)
+
+                        result['extracted_sections'].append({
+                            'section_id': section_idx,
+                            'offset': section_records[0]['offset'],
+                            'original_size': sum(record['length'] for record in section_records),
+                            'records_found': len(section_records),
+                            'records': [{
+                                'offset': record['offset'],
+                                'text_content': record['text'],
+                                'text_length': len(record['text'])
+                            } for record in section_records[:20]]  # First 20 records
+                        })
+
+                        result['total_extracted_size'] += len(combined_text)
             else:
                 # Try reading the whole file as text (TREE.DKI style)
                 f.seek(0)
