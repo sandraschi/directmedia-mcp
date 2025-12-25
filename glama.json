@@ -1,0 +1,41 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": ["sandraschi"],
+  "name": "directmedia-mcp",
+  "description": "Directmedia Digitale Bibliothek decompressor for unlocking 1990s proprietary e-book formats. Extracts readable text from compressed .DKI files.",
+  "type": "mcp_server",
+  "status": "beta",
+  "framework": "FastMCP 2.13+",
+  "tools": 9,
+  "transport": ["stdio"],
+  "keywords": [
+    "directmedia",
+    "decompression",
+    "ebooks",
+    "bibliothek",
+    "proprietary-format",
+    "reverse-engineering",
+    "text-extraction",
+    "epub",
+    "fastmcp"
+  ],
+  "features": {
+    "decompression": {
+      "enabled": true,
+      "formats": ["dki-files"],
+      "era": "1990s-proprietary"
+    },
+    "text_extraction": {
+      "enabled": true,
+      "capabilities": ["readable-content", "metadata", "structure"]
+    },
+    "epub_conversion": {
+      "enabled": true,
+      "output_formats": ["epub", "text"]
+    },
+    "library_management": {
+      "enabled": true,
+      "operations": ["scan", "index", "batch-process"]
+    }
+  }
+}

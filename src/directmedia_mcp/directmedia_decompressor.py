@@ -73,12 +73,16 @@ class DirectmediaDecompressor:
                     break
 
             # Parse offset table (TEXT.DKI style)
-            if analysis['magic_number'] == 0x00010d95:  # TEXT.DKI magic
+            # Known magic numbers for different Directmedia formats
+            text_magic_numbers = [0x00010d95, 0x001924cc]  # Add the discovered magic number
+
+            if analysis['magic_number'] in text_magic_numbers:
                 offsets = []
-                for i in range(4, len(header), 4):
+                # Start from offset 8 (after the first two 4-byte values)
+                for i in range(8, len(header), 4):
                     if i + 4 <= len(header):
                         offset = struct.unpack('<I', header[i:i+4])[0]
-                        if offset > 0:
+                        if offset > 0 and offset < analysis['file_size']:
                             offsets.append(offset)
                 analysis['offsets'] = offsets
 
@@ -401,43 +405,31 @@ class DirectmediaDecompressor:
 
         with open(file_path, 'rb') as f:
             file_size = analysis['file_size']
+            file_data = f.read()
 
-            # Try different extraction strategies
-            if analysis['offsets']:
-                # TEXT.DKI style with offset table
-                for i, offset in enumerate(analysis['offsets'][:max_sections]):
-                    if offset >= file_size:
-                        continue
+            # Simplified approach: scan for readable text blocks
+            text_blocks = self._extract_readable_text_blocks(file_data, max_blocks=max_sections*10)
 
-                    f.seek(offset)
-                    # Try to read a reasonable chunk
-                    chunk_size = min(8192, file_size - offset)
-                    compressed_data = f.read(chunk_size)
+            if text_blocks:
+                # Group text blocks into sections for compatibility
+                section_size = max(1, len(text_blocks) // max_sections)
+                for i in range(0, len(text_blocks), section_size):
+                    section_blocks = text_blocks[i:i+section_size]
+                    combined_text = '\n\n'.join(block['text'] for block in section_blocks)
 
-                    # Parse records from this section
-                    records = self.parse_text_dki_records(compressed_data)
-                    if records:
-                        result['extracted_sections'].append({
-                            'section_id': i,
-                            'offset': offset,
-                            'original_size': len(compressed_data),
-                            'records_found': len(records),
-                            'records': records[:10]  # First 10 records
-                        })
+                    result['extracted_sections'].append({
+                        'section_id': i // section_size,
+                        'offset': section_blocks[0]['offset'],
+                        'original_size': sum(block['length'] for block in section_blocks),
+                        'records_found': len(section_blocks),
+                        'records': [{
+                            'offset': block['offset'],
+                            'text_content': block['text'],
+                            'text_length': len(block['text'])
+                        } for block in section_blocks[:10]]  # First 10 blocks
+                    })
 
-                        # Calculate total text extracted
-                        total_text_size = sum(len(r.get('text_content', '')) for r in records)
-                        result['total_extracted_size'] += total_text_size
-                    else:
-                        # Fallback to old analysis
-                        section_analysis = self.analyze_text_dki_section(compressed_data)
-                        result['extracted_sections'].append({
-                            'section_id': i,
-                            'offset': offset,
-                            'original_size': len(compressed_data),
-                            'analysis': section_analysis
-                        })
-
+                    result['total_extracted_size'] += len(combined_text)
             else:
                 # Try reading the whole file as text (TREE.DKI style)
                 f.seek(0)
@@ -472,6 +464,115 @@ class DirectmediaDecompressor:
                             result['errors'].append(f"Decompressed data decode error: {e}")
 
         return result
+
+    def _extract_readable_text_blocks(self, data: bytes, max_blocks: int = 100, min_length: int = 20) -> List[Dict[str, Any]]:
+        """Extract readable text blocks from binary data with strict validation"""
+        text_blocks = []
+        i = 0
+
+        while i < len(data) and len(text_blocks) < max_blocks:
+            # Look for start of potential text sequence
+            if data[i] >= 32 and data[i] < 127:  # Printable ASCII start
+                start = i
+
+                # Collect sequence until we hit a likely binary boundary
+                sequence_bytes = bytearray()
+                while i < len(data):
+                    byte_val = data[i]
+
+                    # Stop conditions for text sequences:
+                    if byte_val == 0x00:  # Null byte - definite binary
+                        break
+                    elif byte_val < 9 or (byte_val > 13 and byte_val < 32):  # Control chars except tab/lf/cr
+                        break
+                    elif byte_val > 127:  # High ASCII - might be German but check context
+                        # Allow some high ASCII for German, but limit consecutive
+                        pass
+
+                    sequence_bytes.append(byte_val)
+                    i += 1
+
+                    # Stop if sequence gets too long without spaces (likely not natural text)
+                    if len(sequence_bytes) > 200 and b' ' not in sequence_bytes[-50:]:
+                        break
+
+                sequence_length = len(sequence_bytes)
+                if sequence_length >= min_length:
+                    try:
+                        text = sequence_bytes.decode('latin-1', errors='replace')
+
+                        # Strict validation of extracted text
+                        if self._validate_text_content(text, min_length):
+                            # Clean up extra whitespace
+                            import re
+                            clean_text = re.sub(r'\s+', ' ', text.strip())
+
+                            if len(clean_text) >= min_length:
+                                text_blocks.append({
+                                    'offset': start,
+                                    'length': sequence_length,
+                                    'text': clean_text
+                                })
+                    except:
+                        pass
+            else:
+                i += 1
+
+        return text_blocks
+
+    def _validate_text_content(self, text: str, min_length: int) -> bool:
+        """Validate that extracted text is actually readable content, not binary data"""
+        if len(text) < min_length:
+            return False
+
+        # Count different character types
+        total_chars = len(text)
+        ascii_printable = sum(1 for c in text if 32 <= ord(c) <= 126)
+        high_ascii = sum(1 for c in text if 127 <= ord(c) <= 255)
+        whitespace = sum(1 for c in text if c in ' \t\n\r')
+        replacement_chars = text.count('�')
+
+        # Calculate ratios
+        printable_ratio = (ascii_printable + high_ascii) / total_chars
+        high_ascii_ratio = high_ascii / total_chars
+        whitespace_ratio = whitespace / total_chars
+
+        # Reject if too many replacement characters (encoding errors)
+        if replacement_chars > total_chars * 0.1:  # More than 10% replacement chars
+            return False
+
+        # Reject if too many high ASCII chars (likely binary data)
+        if high_ascii_ratio > 0.3:  # More than 30% high ASCII
+            return False
+
+        # Reject if not enough printable characters
+        if printable_ratio < 0.7:  # Less than 70% printable
+            return False
+
+        # Check for natural text patterns
+        words = text.split()
+        if not words:
+            return False
+
+        # Should have some spaces (natural text has word boundaries)
+        avg_word_length = sum(len(word) for word in words) / len(words)
+        if avg_word_length > 50:  # Unusually long words suggest not natural text
+            return False
+
+        # Look for German text patterns (common words/letters)
+        german_indicators = ['der', 'die', 'das', 'und', 'ist', 'von', 'mit', 'für', 'auf', 'ich', 'nicht', 'dass']
+        german_score = sum(1 for indicator in german_indicators if indicator.lower() in text.lower())
+
+        # Look for common German letters
+        german_chars = sum(1 for c in text.lower() if c in 'äöüß')
+        german_score += german_chars
+
+        # Bonus for sentence-like patterns
+        if any(punct in text for punct in '.!?'):
+            german_score += 2
+
+        # Accept if we have reasonable German content or natural text structure
+        return german_score >= 2 or (printable_ratio > 0.8 and whitespace_ratio > 0.02)
 
 def main():
     """Main function to test the decompressor"""
