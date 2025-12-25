@@ -427,7 +427,7 @@ def convert_volume_to_epub(library_path: Union[str, Path],
                     'author': 'Various Authors',  # Could be enhanced to extract from content
                     'content': text_content['content'],
                     'volume_id': volume_id,
-                    'volume_title': volume_info.signet or volume_info.title,
+                    'volume_title': volume_info.title,
                     'lang': 'de'  # German content
                 }
 
