@@ -69,7 +69,20 @@ async def list_volumes() -> List[Dict[str, Any]]:
 
     try:
         volumes = library.list_volumes()
-        return [vol.model_dump() for vol in volumes]
+        # Convert VolumeInfo objects to dictionaries
+        result = []
+        for vol in volumes:
+            result.append({
+                "id": vol.id,
+                "title": vol.title,
+                "short_title": vol.short_title,
+                "path": vol.path,
+                "size_mb": vol.size_mb,
+                "has_text": vol.has_text,
+                "has_images": vol.has_images,
+                "has_audio": vol.has_audio
+            })
+        return result
     except Exception as e:
         logger.error(f"Error listing volumes: {e}")
         return [{"error": f"Failed to list volumes: {str(e)}"}]
@@ -89,7 +102,17 @@ async def get_volume_info(volume_id: str) -> Dict[str, Any]:
     try:
         volume = library.get_volume_info(volume_id)
         if volume:
-            return volume.model_dump()
+            # Convert VolumeInfo object to dictionary
+            return {
+                "id": volume.id,
+                "title": volume.title,
+                "short_title": volume.short_title,
+                "path": volume.path,
+                "size_mb": volume.size_mb,
+                "has_text": volume.has_text,
+                "has_images": volume.has_images,
+                "has_audio": volume.has_audio
+            }
         else:
             return {"error": f"Volume {volume_id} not found"}
     except Exception as e:
@@ -112,7 +135,9 @@ async def search_text(query: str, volume_id: Optional[str] = None, limit: int = 
 
     try:
         results = library.search_text(query, volume_id, limit)
-        return [result.model_dump() for result in results]
+        # Convert SearchResult dataclasses to dictionaries
+        from dataclasses import asdict
+        return [asdict(result) for result in results]
     except Exception as e:
         logger.error(f"Error searching text '{query}': {e}")
         return [{"error": f"Failed to search: {str(e)}"}]
