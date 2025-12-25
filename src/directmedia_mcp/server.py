@@ -20,7 +20,7 @@ logger = get_logger("directmedia_mcp")
 # Initialize MCP server
 mcp = FastMCP(
     "DirectmediaMCP",
-    description="Access Directmedia Publishing Digitale Bibliothek (1990s German literature collection)",
+    instructions="Access Directmedia Publishing Digitale Bibliothek (1990s German literature collection)",
     version="0.1.0"
 )
 
