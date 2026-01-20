@@ -418,22 +418,29 @@ def convert_volume_to_epub(library_path: Union[str, Path],
         # For now, create a single EPUB with all text content
         # Future enhancement: split into chapters/books based on structure
         try:
-            # Extract all available text content
-            # Use the proper decompressor for clean text extraction
-            from .directmedia_decompressor import DirectmediaDecompressor
-            decompressor = DirectmediaDecompressor()
-            text_dki_path = lib.library_path / volume_id / "Data" / "TEXT.DKI"
-            if text_dki_path.exists():
-                extraction_result = decompressor.extract_text_content(text_dki_path, max_sections=20)
-                # Combine all extracted text sections
-                extracted_texts = []
-                for section in extraction_result['extracted_sections']:
-                    for record in section.get('records', []):
-                        if 'text_content' in record and record['text_content']:
-                            extracted_texts.append(record['text_content'])
-                text_content = {'content': '\n\n'.join(extracted_texts)}
-            else:
-                text_content = lib.get_text_content(volume_id, length=50000)  # Fallback
+                # Try to use existing extracted text first (if available)
+                extracted_txt_path = lib.library_path / volume_id / "Data" / "TEXT_extracted.txt"
+                if extracted_txt_path.exists():
+                    # Use the working extracted text file
+                    with open(extracted_txt_path, 'r', encoding='latin-1', errors='replace') as f:
+                        text_content = {'content': f.read()}
+                    print(f"[OK] Using existing extracted text from TEXT_extracted.txt")
+                else:
+                    # Fall back to decompressor (which may not work properly)
+                    from .directmedia_decompressor import DirectmediaDecompressor
+                    decompressor = DirectmediaDecompressor()
+                    text_dki_path = lib.library_path / volume_id / "Data" / "TEXT.DKI"
+                    if text_dki_path.exists():
+                        extraction_result = decompressor.extract_text_content(text_dki_path, max_sections=20)
+                        # Combine all extracted text sections
+                        extracted_texts = []
+                        for section in extraction_result['extracted_sections']:
+                            for record in section.get('records', []):
+                                if 'text_content' in record and record['text_content']:
+                                    extracted_texts.append(record['text_content'])
+                        text_content = {'content': '\n\n'.join(extracted_texts)}
+                    else:
+                        text_content = lib.get_text_content(volume_id, length=50000)  # Fallback
 
             if text_content and 'content' in text_content:
                 book_data = {

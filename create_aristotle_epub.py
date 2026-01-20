@@ -10,7 +10,7 @@ def create_aristotle_epub():
     print('CREATING ARISTOTLE METAPHYSICS EPUB')
 
     # Read the extracted text
-    extracted_path = Path(r'L:\Multimedia Files\Written Word\Digitale Bibliothek\DB002\Data\TEXT_extracted.txt')
+    extracted_path = Path(r'L:\Multimedia Files\Written Word\Digitale Bibliothek\DB002\Data\TEXT_extracted_new.txt')
     output_epub = Path('./Aristotle_Metaphysics.epub')
 
     if not extracted_path.exists():
@@ -100,3 +100,4 @@ def create_aristotle_epub():
 
 if __name__ == '__main__':
     create_aristotle_epub()
+

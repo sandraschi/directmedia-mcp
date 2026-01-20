@@ -43,3 +43,7 @@ pytest --cov=directmedia_mcp tests/
 
 - `sample_dki_file`: Path to a sample DKI file for testing
 - `temp_output_dir`: Temporary directory for test outputs
+
+
+
+

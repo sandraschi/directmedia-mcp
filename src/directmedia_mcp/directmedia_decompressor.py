@@ -509,6 +509,119 @@ class DirectmediaDecompressor:
 
         return result
 
+    def _parse_text_dki_records(self, file_data: bytes, max_records: int = 1000) -> List[Dict[str, Any]]:
+        """Parse TEXT.DKI file records: 2-byte length + 1-byte type + text content"""
+
+        text_records = []
+        i = 0
+
+        while i < len(file_data) - 10 and len(text_records) < max_records:
+            # Check for record header: 2 bytes length + 1 byte type
+            if i + 3 <= len(file_data):
+                record_length = int.from_bytes(file_data[i:i+2], byteorder='little')
+                record_type = file_data[i+2]
+
+                if 5 <= record_length <= 5000:  # Reasonable text length for philosophical content
+                    text_start = i + 3
+                    text_end = text_start + record_length
+
+                    if text_end <= len(file_data):
+                        text_bytes = file_data[text_start:text_end]
+
+                        try:
+                            # Decode as Latin-1 (German text encoding)
+                            text = text_bytes.decode('latin-1', errors='replace')
+
+                            # Validate as meaningful philosophical text
+                            if (len(text.strip()) >= 10 and  # Substantial content
+                                any(c.isalpha() for c in text) and  # Contains letters
+                                not text.isdigit() and  # Not just numbers
+                                text.count(' ') > 2 and  # Contains sentences/paragraphs
+                                not all(c in '.,;:!?- ' for c in text)):  # Not just punctuation
+
+                                text_records.append({
+                                    'offset': i,
+                                    'length': record_length,
+                                    'text': text.strip(),
+                                    'record_type': record_type,
+                                    'raw_bytes': text_bytes
+                                })
+
+                        except UnicodeDecodeError:
+                            pass
+
+                i += 3 + record_length
+            else:
+                i += 1
+
+        return text_records
+
+    def _decompress_index_ttx(self, ttx_path: Path) -> str:
+        """Decompress INDEX.TTX file to extract actual text content"""
+
+        with open(ttx_path, 'rb') as f:
+            data = f.read()
+
+        extracted_text = []
+
+        # Method 1: Try zlib decompression on compressed blocks
+        import zlib
+
+        i = 0
+        while i < len(data) - 100:
+            try:
+                # Look for zlib compressed blocks
+                if data[i:i+2] == b'\x78\x9c':  # Zlib signature
+                    chunk = data[i:]
+                    try:
+                        decompressed = zlib.decompress(chunk)
+                        text = decompressed.decode('latin-1', errors='replace')
+
+                        # Check if we got meaningful philosophical text
+                        if (len(text) > 100 and
+                            any(word in text.lower() for word in ['philosoph', 'aristotel', 'metaphysik', 'ethik'])):
+
+                            extracted_text.append(text)
+                            print(f"Found philosophical text block at offset {i}")
+                            break  # Found what we want
+
+                    except (zlib.error, UnicodeDecodeError):
+                        pass
+
+            except:
+                pass
+
+            i += 1
+
+        # Method 2: If no compressed blocks work, try direct text extraction
+        if not extracted_text:
+            print("No compressed blocks found, trying direct text extraction...")
+            i = 0
+            while i < len(data) - 500:
+                if data[i] >= 32 and data[i] <= 255:
+                    start = i
+                    while i < len(data) and data[i] >= 32 and data[i] <= 255:
+                        i += 1
+
+                    block_length = i - start
+                    if block_length >= 1000:  # Substantial text block
+                        try:
+                            text = data[start:i].decode('latin-1', errors='replace')
+
+                            # Look for philosophy content
+                            if any(word in text.lower() for word in ['aristotel', 'metaphysik', 'philosoph']):
+                                extracted_text.append(text)
+                                print(f"Found philosophical text block at offset {start}")
+                                if len(extracted_text) >= 3:  # Get a few samples
+                                    break
+
+                        except UnicodeDecodeError:
+                            pass
+                else:
+                    i += 1
+
+        return '\n\n'.join(extracted_text) if extracted_text else ""
+
     def _extract_readable_text_blocks(self, data: bytes, max_blocks: int = 100, min_length: int = 20) -> List[Dict[str, Any]]:
         """Extract readable text blocks from binary data with strict validation"""
         text_blocks = []
