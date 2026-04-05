@@ -21,7 +21,7 @@ logger = get_logger("directmedia_mcp")
 mcp = FastMCP(
     "DirectmediaMCP",
     instructions="Access Directmedia Publishing Digitale Bibliothek (1990s German literature collection)",
-    version="0.1.0"
+    version="0.1.0",
 )
 
 # Global library instance
@@ -30,6 +30,7 @@ library: Optional[DirectmediaLibrary] = None
 
 class VolumeInfo(BaseModel):
     """Information about a library volume"""
+
     id: str = Field(description="Volume ID (e.g., 'DB002')")
     title: str = Field(description="Full volume title")
     short_title: str = Field(description="Short title")
@@ -42,6 +43,7 @@ class VolumeInfo(BaseModel):
 
 class SearchResult(BaseModel):
     """Search result"""
+
     volume_id: str = Field(description="Volume containing the result")
     title: str = Field(description="Entry title")
     content_preview: str = Field(description="Content preview")
@@ -72,16 +74,18 @@ async def list_volumes() -> List[Dict[str, Any]]:
         # Convert VolumeInfo objects to dictionaries
         result = []
         for vol in volumes:
-            result.append({
-                "id": vol.id,
-                "title": vol.title,
-                "short_title": vol.short_title,
-                "path": vol.path,
-                "size_mb": vol.size_mb,
-                "has_text": vol.has_text,
-                "has_images": vol.has_images,
-                "has_audio": vol.has_audio
-            })
+            result.append(
+                {
+                    "id": vol.id,
+                    "title": vol.title,
+                    "short_title": vol.short_title,
+                    "path": vol.path,
+                    "size_mb": vol.size_mb,
+                    "has_text": vol.has_text,
+                    "has_images": vol.has_images,
+                    "has_audio": vol.has_audio,
+                }
+            )
         return result
     except Exception as e:
         logger.error(f"Error listing volumes: {e}")
@@ -111,7 +115,7 @@ async def get_volume_info(volume_id: str) -> Dict[str, Any]:
                 "size_mb": volume.size_mb,
                 "has_text": volume.has_text,
                 "has_images": volume.has_images,
-                "has_audio": volume.has_audio
+                "has_audio": volume.has_audio,
             }
         else:
             return {"error": f"Volume {volume_id} not found"}
@@ -121,7 +125,9 @@ async def get_volume_info(volume_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-async def search_text(query: str, volume_id: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+async def search_text(
+    query: str, volume_id: Optional[str] = None, limit: int = 20
+) -> List[Dict[str, Any]]:
     """
     Search for text across volumes
 
@@ -137,6 +143,7 @@ async def search_text(query: str, volume_id: Optional[str] = None, limit: int = 
         results = library.search_text(query, volume_id, limit)
         # Convert SearchResult dataclasses to dictionaries
         from dataclasses import asdict
+
         return [asdict(result) for result in results]
     except Exception as e:
         logger.error(f"Error searching text '{query}': {e}")
@@ -144,7 +151,9 @@ async def search_text(query: str, volume_id: Optional[str] = None, limit: int = 
 
 
 @mcp.tool()
-async def get_text_content(volume_id: str, start_pos: int = 0, length: int = 1000) -> Dict[str, Any]:
+async def get_text_content(
+    volume_id: str, start_pos: int = 0, length: int = 1000
+) -> Dict[str, Any]:
     """
     Extract text content from a volume
 
@@ -162,7 +171,7 @@ async def get_text_content(volume_id: str, start_pos: int = 0, length: int = 100
             "volume_id": volume_id,
             "start_position": start_pos,
             "length": length,
-            "content": content
+            "content": content,
         }
     except Exception as e:
         logger.error(f"Error getting text content from {volume_id}: {e}")
@@ -220,7 +229,11 @@ async def set_library_path(path: str) -> Dict[str, Any]:
             return {"error": f"Path does not exist: {path}"}
 
         # Check if it looks like a Directmedia library
-        db_folders = [f for f in os.listdir(path) if f.startswith('DB') and os.path.isdir(os.path.join(path, f))]
+        db_folders = [
+            f
+            for f in os.listdir(path)
+            if f.startswith("DB") and os.path.isdir(os.path.join(path, f))
+        ]
         if not db_folders:
             return {"error": f"No Directmedia volumes (DBxxx folders) found in {path}"}
 
@@ -231,7 +244,7 @@ async def set_library_path(path: str) -> Dict[str, Any]:
             "success": True,
             "path": path,
             "volumes_found": len(db_folders),
-            "message": f"Library initialized with {len(db_folders)} volumes"
+            "message": f"Library initialized with {len(db_folders)} volumes",
         }
     except Exception as e:
         logger.error(f"Error setting library path: {e}")
@@ -266,14 +279,14 @@ async def convert_volume_to_epub_file(volume_id: str, output_dir: str) -> Dict[s
                 "volume_id": volume_id,
                 "epub_files_created": result["epub_files_created"],
                 "output_dir": result["output_dir"],
-                "message": f"Successfully converted volume {volume_id} to EPUB format"
+                "message": f"Successfully converted volume {volume_id} to EPUB format",
             }
         else:
             return {
                 "success": False,
                 "volume_id": volume_id,
                 "errors": result.get("errors", ["Unknown error"]),
-                "message": f"Failed to convert volume {volume_id}"
+                "message": f"Failed to convert volume {volume_id}",
             }
 
     except Exception as e:
@@ -282,7 +295,9 @@ async def convert_volume_to_epub_file(volume_id: str, output_dir: str) -> Dict[s
 
 
 @mcp.tool()
-async def batch_convert_to_epub(output_dir: str, volume_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+async def batch_convert_to_epub(
+    output_dir: str, volume_ids: Optional[List[str]] = None
+) -> Dict[str, Any]:
     """
     Convert multiple Directmedia volumes to EPUB format
 
@@ -310,7 +325,7 @@ async def batch_convert_to_epub(output_dir: str, volume_ids: Optional[List[str]]
             "volumes_converted": result["volumes_converted"],
             "output_dir": result["output_dir"],
             "errors": result.get("errors", []),
-            "message": f"Batch conversion complete: {result['epub_files_created']} EPUB files created"
+            "message": f"Batch conversion complete: {result['epub_files_created']} EPUB files created",
         }
 
     except Exception as e:
@@ -319,18 +334,19 @@ async def batch_convert_to_epub(output_dir: str, volume_ids: Optional[List[str]]
 
 
 def main():
-    """Main entry point"""
-    import argparse
+    """Main entry point with unified transport handling (FastMCP 2.14.4+)."""
+    from .transport import create_argument_parser, resolve_transport, run_server
+    import logging as log_module
 
-    parser = argparse.ArgumentParser(description="Directmedia MCP Server")
+    # Create parser with custom arguments
+    parser = create_argument_parser(server_name="DirectmediaMCP")
     parser.add_argument("--library-path", help="Path to Digitale Bibliothek directory")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
 
     args = parser.parse_args()
 
     # Set log level
-    import logging
-    logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
+    log_module.getLogger().setLevel(getattr(log_module, args.log_level.upper()))
 
     # Initialize library if path provided
     if args.library_path:
@@ -338,10 +354,9 @@ def main():
         library = initialize_library(args.library_path)
         logger.info(f"Initialized library with {len(library.list_volumes())} volumes")
 
-    # Run MCP server
-    mcp.run()
+    # Run with unified transport
+    run_server(mcp, server_name="directmedia-mcp")
 
 
 if __name__ == "__main__":
     main()
-

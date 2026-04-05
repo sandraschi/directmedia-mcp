@@ -1,4 +1,4 @@
-# Directmedia MCP 📚
+# Directmedia MCP 
 
 [![Python](https://img.shields.io/badge/Python-3.10+-green)](https://python.org)
 [![FastMCP](https://img.shields.io/badge/FastMCP-2.13+-blue)](https://github.com/jlowin/fastmcp)
@@ -10,11 +10,11 @@
 
 **FastMCP 2.13+ server for accessing Directmedia Publishing "Digitale Bibliothek" - TEXT EXTRACTION WORKING!**
 
-## 🎯 Overview
+##  Overview
 
 The Directmedia Publishing "Digitale Bibliothek" was a pioneering German electronic book collection from the 1990s, containing extensive German literature and world literature. This MCP server provides programmatic access to these classic digital books.
 
-### ✅ **BREAKTHROUGH: Text Extraction Working!**
+###  **BREAKTHROUGH: Text Extraction Working!**
 
 **MISSION ACCOMPLISHED**: We successfully reversed the Directmedia TEXT.DKI format!
 
@@ -25,16 +25,16 @@ The Directmedia Publishing "Digitale Bibliothek" was a pioneering German electro
 
 **What was thought to be "compression" was actually a structured record format with 2-byte length headers!**
 
-### 📊 Collection Status
+###  Collection Status
 - **101 volumes** discovered (DB002-DB161, DBSK01-DBSK05, DBSO01-DBSO28)
 - **~14GB** total content across all volumes
 - **Proprietary binary format** from 1990s German publishing
 - **Latin-1 encoding** with special characters for German texts
 
-### ⚠️ **Legal Requirement**
+###  **Legal Requirement**
 **You must legally purchase the Directmedia CD-ROMs to use this tool. See Legal Notice section below.**
 
-### 🗂️ Sample Volumes
+###  Sample Volumes
 | Volume ID | Title | Size | Content Type |
 |-----------|-------|------|--------------|
 | DB002 | Philosophie von Platon bis Nietzsche | 389MB | Philosophy |
@@ -45,14 +45,14 @@ The Directmedia Publishing "Digitale Bibliothek" was a pioneering German electro
 | DB009 | Killy Literaturlexikon | 137MB | Reference |
 | DB011 | Marx/Engels | 117MB | Political Philosophy |
 
-### 📊 Collection Analysis
+###  Collection Analysis
 
 **101 volumes** discovered with **~50GB** total content:
 - **DB002-DB061**: Main literature collection (philosophy, literature, history)
 - **DBSK01-DBSK05**: Schnellkurs (crash courses)
 - **DBSO01-DBSO28**: Sonderausgaben (special editions)
 
-### 🗂️ File Format Structure
+###  File Format Structure
 
 Each volume uses a proprietary binary format:
 
@@ -68,18 +68,35 @@ Each volume uses a proprietary binary format:
 - **WAVS/**: Audio files (readings, lectures)
 - **TABLES/**: Specialized content tables
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 - Python 3.11+
 - Access to Directmedia "Digitale Bibliothek" collection
 - FastMCP 2.13+
 
-### Installation
+##  Installation
+
+### Prerequisites
+- [uv](https://docs.astral.sh/uv/) installed (RECOMMENDED)
+- Python 3.12+
+
+###  Quick Start
+Run immediately via `uvx`:
 ```bash
-pip install -e .
+uvx directmedia-mcp
 ```
 
+###  Claude Desktop Integration
+Add to your `claude_desktop_config.json`:
+```json
+"mcpServers": {
+  "directmedia-mcp": {
+    "command": "uv",
+    "args": ["--directory", "D:/Dev/repos/directmedia-mcp", "run", "directmedia-mcp"]
+  }
+}
+```
 ### Basic Usage
 ```python
 from directmedia_mcp import DirectmediaLibrary
@@ -107,7 +124,7 @@ python -m directmedia_mcp.server --library-path "L:\Multimedia Files\Written Wor
 directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Bibliothek"
 ```
 
-## 🔧 MCP Tools
+##  MCP Tools
 
 ### Library Management
 - `set_library_path(path)` - Configure library location
@@ -119,14 +136,14 @@ directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Biblio
 - `get_text_content(volume_id, start_pos, length)` - Extract text
 - `get_navigation_tree(volume_id)` - Get table of contents
 
-### EPUB Conversion ⭐ **NEW**
+### EPUB Conversion  **NEW**
 - `convert_volume_to_epub_file(volume_id, output_dir)` - Convert single volume to EPUB
 - `batch_convert_to_epub(output_dir, volume_ids)` - Convert multiple volumes to EPUB
 
 ### Analysis
 - `analyze_volume_structure(volume_id)` - File format analysis
 
-## 📋 Volume Overview
+##  Volume Overview
 
 | Volume ID | Title | Size | Content Type |
 |-----------|-------|------|--------------|
@@ -136,7 +153,7 @@ directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Biblio
 | DB005 | Lessing | 75MB | Literature |
 | ... | ... | ... | ... |
 
-## 🔍 Technical Details
+##  Technical Details
 
 ### Binary Format Analysis
 
@@ -163,7 +180,7 @@ directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Biblio
 3. **Encoding**: Primarily Latin-1 with some UTF-8 elements
 4. **Media Content**: Images and audio files not yet processed
 
-### Recent Achievements ✅
+### Recent Achievements 
 
 - [x] **TEXT.DKI Decompression**: Successfully reversed structured binary record format
 - [x] **Text Extraction**: Working decompressor extracts readable German text
@@ -172,7 +189,7 @@ directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Biblio
 - [x] **Volume Management**: Complete 101-volume library access
 - [x] **TREE.DKI Navigation**: Table of contents successfully parsed
 
-## 📖 **EPUB Conversion Feature**
+##  **EPUB Conversion Feature**
 
 Convert extracted Directmedia text content into modern EPUB format for e-book readers!
 
@@ -207,18 +224,18 @@ batch_convert_to_epub("./epub_library", ["DB002", "DB003", "DB004"])
 ### **Output Example**
 ```
 epub_output/
-├── Goethe - Faust.epub          # Volume DB004
-├── Heine - Buch der Lieder.epub # Volume DB007
-└── ... (more volumes)
+ Goethe - Faust.epub          # Volume DB004
+ Heine - Buch der Lieder.epub # Volume DB007
+ ... (more volumes)
 ```
 
 ### **EPUB Reader Compatibility**
-- ✅ **Calibre** (recommended for library management)
-- ✅ **Apple Books** (iOS/macOS)
-- ✅ **Google Play Books**
-- ✅ **Kindle** (via conversion)
-- ✅ **Adobe Digital Editions**
-- ✅ **All major e-book readers**
+-  **Calibre** (recommended for library management)
+-  **Apple Books** (iOS/macOS)
+-  **Google Play Books**
+-  **Kindle** (via conversion)
+-  **Adobe Digital Editions**
+-  **All major e-book readers**
 
 ### Future Enhancements
 
@@ -228,7 +245,7 @@ epub_output/
 - [ ] Image extraction and processing
 - [ ] Audio file handling
 
-## 🤝 Contributing
+##  Contributing
 
 This is a research project to preserve and provide access to classic digital literature. Contributions welcome for:
 
@@ -237,7 +254,7 @@ This is a research project to preserve and provide access to classic digital lit
 - Search optimization
 - Documentation improvements
 
-## ⚖️ **Legal Notice & Copyright**
+##  **Legal Notice & Copyright**
 
 ### **Important: Legal Use Required**
 
@@ -252,7 +269,7 @@ Directmedia Publishing still operates and offers their complete collection:
 - **Languages**: German literature and philosophy collections
 
 #### **Copyright Notice**
-- **Copyright**: © Directmedia Publishing GmbH
+- **Copyright**:  Directmedia Publishing GmbH
 - **Content**: All text, images, and multimedia content remain copyrighted
 - **Usage**: Personal, educational, and research use permitted with legal copies
 - **Redistribution**: Not permitted without explicit permission
@@ -262,12 +279,24 @@ This tool is provided for **educational and research purposes** to access legall
 
 **Pirated or illegally obtained content is not supported and may violate copyright law.**
 
-## 📜 License
+##  License
 
 MIT License - see LICENSE file for details.
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - Directmedia Publishing for pioneering electronic literature in the 1990s
 - The German digital humanities community
 - FastMCP framework for MCP implementation
+
+
+##  Webapp Dashboard
+
+This MCP server includes a free, premium web interface for monitoring and control.
+By default, the web dashboard runs on port **10826**.
+*(Assigned ports: **10826** (Web dashboard frontend), **10827** (Web dashboard backend (API)))*
+
+To start the webapp:
+1. Navigate to the `webapp` (or `web`, `frontend`) directory.
+2. Run `start.bat` (Windows) or `./start.ps1` (PowerShell).
+3. Open `http://localhost:10826` in your browser.
