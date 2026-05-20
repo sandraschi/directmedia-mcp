@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from fastmcp import FastMCP
+from fastmcp.server import create_proxy
 from pydantic import BaseModel, Field
 
 from .library import DirectmediaLibrary
@@ -23,6 +24,18 @@ mcp = FastMCP(
     instructions="Access Directmedia Publishing Digitale Bibliothek (1990s German literature collection)",
     version="0.1.0",
 )
+
+_bridge_proxies = []
+bridge_urls = os.getenv("MCP_BRIDGE_URLS", "")
+if bridge_urls:
+    for url in bridge_urls.split(","):
+        url = url.strip()
+        if url:
+            try:
+                mcp.add_provider(create_proxy(url))
+                _bridge_proxies.append(url)
+            except Exception:
+                pass
 
 # Global library instance
 library: Optional[DirectmediaLibrary] = None
