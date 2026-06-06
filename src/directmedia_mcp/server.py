@@ -3,6 +3,7 @@
 Directmedia MCP Server - Access to Directmedia Publishing Digitale Bibliothek
 """
 
+import json
 import os
 from typing import Any
 
@@ -64,11 +65,36 @@ class SearchResult(BaseModel):
 
 
 def initialize_library(library_path: str) -> DirectmediaLibrary:
-    """Initialize the Directmedia library"""
+    """Initialize or re-initialize the Directmedia library at the given path."""
     global library
-    if library is None:
-        library = DirectmediaLibrary(library_path)
+    library = DirectmediaLibrary(library_path)
     return library
+
+
+def serialize_tool_result(result: Any) -> Any:
+    """Return plain JSON data from a FastMCP ToolResult for the HTTP bridge."""
+    payload: Any = None
+    structured = getattr(result, "structured_content", None)
+    if structured is not None:
+        payload = structured
+    elif hasattr(result, "model_dump"):
+        data = result.model_dump(by_alias=False)
+        if data.get("structured_content") is not None:
+            payload = data["structured_content"]
+        else:
+            for chunk in data.get("content") or []:
+                if chunk.get("type") == "text" and chunk.get("text"):
+                    try:
+                        payload = json.loads(chunk["text"])
+                    except json.JSONDecodeError:
+                        payload = chunk["text"]
+                    break
+    if payload is None:
+        return result
+    # FastMCP wraps bare list tool returns as {"result": [...]}
+    if isinstance(payload, dict) and set(payload.keys()) == {"result"}:
+        return payload["result"]
+    return payload
 
 
 @mcp.tool()
@@ -276,7 +302,7 @@ async def convert_volume_to_epub_file(volume_id: str, output_dir: str) -> dict[s
         os.makedirs(output_dir, exist_ok=True)
 
         # Convert volume to EPUB
-        result = convert_volume_to_epub(library.base_path, volume_id, output_dir)
+        result = convert_volume_to_epub(str(library.library_path), volume_id, output_dir)
 
         if result.get("epub_files_created", 0) > 0:
             return {
@@ -319,7 +345,7 @@ async def batch_convert_to_epub(output_dir: str, volume_ids: list[str] | None = 
         os.makedirs(output_dir, exist_ok=True)
 
         # Perform batch conversion
-        result = batch_convert_library(library.base_path, output_dir, volume_ids)
+        result = batch_convert_library(str(library.library_path), output_dir, volume_ids)
 
         return {
             "success": True,
@@ -384,6 +410,32 @@ async def api_status() -> dict[str, Any]:
     }
 
 
+class LibraryPathRequest(BaseModel):
+    path: str = Field(description="Full path to the Digitale Bibliothek root directory")
+
+
+@app.post("/api/v1/library/path")
+async def api_set_library_path(body: LibraryPathRequest) -> dict[str, Any]:
+    """Set and initialize the Digitale Bibliothek library path."""
+    path = body.path.strip()
+    if not path:
+        raise HTTPException(status_code=400, detail="Library path is required")
+    try:
+        logger.info("Setting library path via REST: %s", path)
+        result = await mcp.call_tool("set_library_path", {"path": path})
+        payload = serialize_tool_result(result)
+        if isinstance(payload, dict) and payload.get("error"):
+            raise HTTPException(status_code=400, detail=str(payload["error"]))
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=500, detail="Unexpected tool response")
+        return payload
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to set library path")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/v1/call")
 async def api_call_tool(request: dict[str, Any]) -> Any:
     """Bridge for web_sota to invoke MCP tools over HTTP."""
@@ -393,10 +445,28 @@ async def api_call_tool(request: dict[str, Any]) -> Any:
         raise HTTPException(status_code=400, detail="Tool name is required")
     try:
         logger.info("Web bridge calling tool %s", name)
-        return await mcp.call_tool(name, arguments)
+        result = await mcp.call_tool(name, arguments)
+        return serialize_tool_result(result)
     except Exception as exc:
         logger.exception("Tool call failed: %s", name)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.on_event("startup")
+async def startup_init_library() -> None:
+    """Optionally initialize library from DIRECTMEDIA_LIBRARY_PATH on boot."""
+    env_path = os.getenv("DIRECTMEDIA_LIBRARY_PATH", "").strip()
+    if not env_path:
+        return
+    try:
+        result = await mcp.call_tool("set_library_path", {"path": env_path})
+        payload = serialize_tool_result(result)
+        if isinstance(payload, dict) and payload.get("success"):
+            logger.info("Auto-initialized library from DIRECTMEDIA_LIBRARY_PATH: %s", env_path)
+        elif isinstance(payload, dict) and payload.get("error"):
+            logger.warning("DIRECTMEDIA_LIBRARY_PATH invalid: %s", payload["error"])
+    except Exception as exc:
+        logger.warning("Could not auto-initialize library: %s", exc)
 
 
 app.mount("/mcp", mcp.http_app())

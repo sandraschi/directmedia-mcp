@@ -29,6 +29,16 @@ export interface SearchHit {
 const STORAGE_LIBRARY = "directmedia.library_path";
 const STORAGE_EPUB_OUT = "directmedia.epub_output_dir";
 
+/** Dev: Vite proxies /api → :10827. Override with VITE_BACKEND_URL for direct access. */
+const API_BASE = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+
+export function formatFetchError(error: unknown): string {
+  if (error instanceof TypeError && /fetch/i.test(error.message)) {
+    return "Backend offline — run start.bat from directmedia-mcp (needs API on port 10827).";
+  }
+  return error instanceof Error ? error.message : "Request failed";
+}
+
 export function getStoredLibraryPath(): string {
   return localStorage.getItem(STORAGE_LIBRARY) ?? "";
 }
@@ -53,6 +63,12 @@ export function unwrapToolResult<T>(result: unknown): T {
   if (record.structuredContent !== undefined) {
     return record.structuredContent as T;
   }
+  if (record.structured_content !== undefined) {
+    return record.structured_content as T;
+  }
+  if (record.success !== undefined || record.error !== undefined || Array.isArray(result)) {
+    return result as T;
+  }
   if (Array.isArray(record.content)) {
     const text = record.content
       .filter((chunk): chunk is { type: string; text?: string } => typeof chunk === "object" && chunk !== null)
@@ -70,7 +86,7 @@ export function unwrapToolResult<T>(result: unknown): T {
 }
 
 async function callTool<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
-  const res = await fetch("/api/v1/call", {
+  const res = await fetch(`${API_BASE}/api/v1/call`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, arguments: args }),
@@ -83,16 +99,27 @@ async function callTool<T>(name: string, args: Record<string, unknown> = {}): Pr
 }
 
 export async function fetchStatus(): Promise<ServerStatus> {
-  const res = await fetch("/api/v1/status");
+  const res = await fetch(`${API_BASE}/api/v1/status`);
   if (!res.ok) throw new Error("Backend unreachable");
   return res.json();
 }
 
 export async function setLibraryPath(path: string) {
-  return callTool<{ success?: boolean; error?: string; volumes_found?: number; message?: string }>(
-    "set_library_path",
-    { path },
-  );
+  const trimmed = path.trim();
+  const res = await fetch(`${API_BASE}/api/v1/library/path`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: trimmed }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail =
+      typeof payload === "object" && payload !== null && "detail" in payload
+        ? String((payload as { detail: unknown }).detail)
+        : res.statusText;
+    throw new Error(detail || "Failed to set library path");
+  }
+  return payload as { success?: boolean; error?: string; volumes_found?: number; message?: string };
 }
 
 export async function listVolumes(): Promise<VolumeRow[]> {

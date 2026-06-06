@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   fetchStatus,
+  formatFetchError,
   setLibraryPath,
   getStoredLibraryPath,
   setStoredLibraryPath,
@@ -17,20 +18,51 @@ export function Settings() {
   const [epubDir, setEpubDir] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setPath(getStoredLibraryPath());
+    const stored = getStoredLibraryPath();
+    setPath(stored);
     setEpubDir(getStoredEpubOutputDir());
     fetchStatus()
-      .then((s) => setInitialized(s.library_initialized))
-      .catch(() => setInitialized(false));
+      .then(async (s) => {
+        setBackendOnline(true);
+        setInitialized(s.library_initialized);
+        if (!s.library_initialized && stored.trim()) {
+          setMessage("Restoring library path on server …");
+          try {
+            const result = await setLibraryPath(stored);
+            if (result.error) {
+              setMessage(result.error);
+            } else {
+              setMessage(result.message ?? `Library ready (${result.volumes_found ?? "?"} volumes)`);
+              setInitialized(true);
+            }
+          } catch (e) {
+            setMessage(formatFetchError(e));
+          }
+        }
+      })
+      .catch(() => {
+        setBackendOnline(false);
+        setInitialized(false);
+        if (stored.trim()) {
+          setMessage("Backend offline — run start.bat from directmedia-mcp, then click Save again.");
+        }
+      });
   }, []);
 
   async function saveLibrary() {
     setMessage(null);
-    setStoredLibraryPath(libraryPath);
+    const trimmed = libraryPath.trim();
+    if (!trimmed) {
+      setMessage("Enter the folder that contains DB001, DB002, …");
+      return;
+    }
+    setPath(trimmed);
+    setStoredLibraryPath(trimmed);
     try {
-      const result = await setLibraryPath(libraryPath);
+      const result = await setLibraryPath(trimmed);
       if (result.error) {
         setMessage(result.error);
       } else {
@@ -38,7 +70,8 @@ export function Settings() {
         setInitialized(true);
       }
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Failed to set library path");
+      setMessage(formatFetchError(e));
+      setBackendOnline(false);
     }
   }
 
@@ -79,7 +112,15 @@ export function Settings() {
             />
           </div>
           <p className="text-xs text-slate-500">
-            Status: {initialized ? "library initialized on server" : "not initialized — set path and save"}
+            Backend:{" "}
+            {backendOnline === null
+              ? "checking…"
+              : backendOnline
+                ? "online (port 10827)"
+                : "offline — run start.bat"}
+            {" · "}
+            Library:{" "}
+            {initialized ? "initialized on server" : "not initialized — set path and save"}
           </p>
           <Button onClick={saveLibrary} className="bg-amber-700 hover:bg-amber-600">
             Save &amp; initialize library
