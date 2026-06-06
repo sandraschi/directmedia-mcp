@@ -8,14 +8,12 @@ for modern e-book readers and libraries.
 Based on Gemini-generated code with enhancements for Directmedia integration.
 """
 
-import os
-import json
-import zipfile
 import re
-from uuid import uuid4
+import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Union
+from typing import Any
+from uuid import uuid4
 
 # --- Constants & Templates ---
 
@@ -269,7 +267,7 @@ def sanitize_filename(name: str) -> str:
     # Remove characters that are unsafe for filenames
     s = re.sub(r'[\\/*?:"<>|]', "", name)
     # Replace problematic characters with safe alternatives
-    s = re.sub(r'[^\w\s\-\.]', "_", s)
+    s = re.sub(r"[^\w\s\-\.]", "_", s)
     # Truncate to avoid filesystem limits
     s = s.strip()[:100]
     # Ensure it's not empty
@@ -291,7 +289,7 @@ def sanitize_html_content(text: str) -> str:
     text = text.replace(">", "&gt;")
 
     # Convert line breaks to paragraphs (basic)
-    paragraphs = text.split('\n\n')
+    paragraphs = text.split("\n\n")
     html_paragraphs = []
 
     for para in paragraphs:
@@ -306,16 +304,16 @@ def sanitize_html_content(text: str) -> str:
     return "\n".join(html_paragraphs) if html_paragraphs else "<p>Content could not be formatted.</p>"
 
 
-def create_single_epub(book_data: Dict[str, Any], output_dir: Union[str, Path]) -> bool:
+def create_single_epub(book_data: dict[str, Any], output_dir: str | Path) -> bool:
     """
     Generates a single EPUB artifact from Directmedia extracted content.
     """
-    title = book_data.get('title', 'Unknown Title')
-    author = book_data.get('author', 'Unknown Author')
-    body_text = book_data.get('content', '')
-    volume_id = book_data.get('volume_id', 'Unknown Volume')
-    volume_title = book_data.get('volume_title', '')
-    lang = book_data.get('lang', 'de')
+    title = book_data.get("title", "Unknown Title")
+    author = book_data.get("author", "Unknown Author")
+    body_text = book_data.get("content", "")
+    volume_id = book_data.get("volume_id", "Unknown Volume")
+    volume_title = book_data.get("volume_title", "")
+    lang = book_data.get("lang", "de")
 
     # Prepare content
     body_html = sanitize_html_content(body_text)
@@ -342,40 +340,38 @@ def create_single_epub(book_data: Dict[str, Any], output_dir: Union[str, Path]) 
         volume_info += f" - {volume_title}"
 
     try:
-        with zipfile.ZipFile(filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
             # 1. Mimetype (Stored, not deflated - critical for validity)
             zf.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
 
             # 2. Container
-            zf.writestr("META-INF/container.xml",
-                        """<?xml version="1.0"?>
+            zf.writestr(
+                "META-INF/container.xml",
+                """<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
     <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
   </rootfiles>
-</container>""")
+</container>""",
+            )
 
             # 3. Content files
             zf.writestr("OEBPS/style.css", CSS_STYLES)
             zf.writestr("OEBPS/nav.xhtml", NAV_TEMPLATE.format(title=title))
 
             # Inject Content
-            zf.writestr("OEBPS/content.xhtml", CONTENT_TEMPLATE.format(
-                title=title,
-                author=author,
-                volume_info=volume_info,
-                body_html=body_html
-            ))
+            zf.writestr(
+                "OEBPS/content.xhtml",
+                CONTENT_TEMPLATE.format(title=title, author=author, volume_info=volume_info, body_html=body_html),
+            )
 
             # Package Definition
-            zf.writestr("OEBPS/content.opf", OPF_TEMPLATE.format(
-                title=title,
-                author=author,
-                lang=lang,
-                uuid=book_uuid,
-                date=current_date,
-                description=description
-            ))
+            zf.writestr(
+                "OEBPS/content.opf",
+                OPF_TEMPLATE.format(
+                    title=title, author=author, lang=lang, uuid=book_uuid, date=current_date, description=description
+                ),
+            )
 
         print(f"[OK] Created EPUB: {filename}")
         return True
@@ -385,9 +381,7 @@ def create_single_epub(book_data: Dict[str, Any], output_dir: Union[str, Path]) 
         return False
 
 
-def convert_volume_to_epub(library_path: Union[str, Path],
-                          volume_id: str,
-                          output_dir: Union[str, Path]) -> Dict[str, Any]:
+def convert_volume_to_epub(library_path: str | Path, volume_id: str, output_dir: str | Path) -> dict[str, Any]:
     """
     Convert an entire Directmedia volume to EPUB format.
 
@@ -396,12 +390,7 @@ def convert_volume_to_epub(library_path: Union[str, Path],
     """
     from .library import DirectmediaLibrary
 
-    results = {
-        "volume_id": volume_id,
-        "epub_files_created": 0,
-        "errors": [],
-        "output_dir": str(Path(output_dir))
-    }
+    results = {"volume_id": volume_id, "epub_files_created": 0, "errors": [], "output_dir": str(Path(output_dir))}
 
     try:
         # Initialize library
@@ -418,38 +407,39 @@ def convert_volume_to_epub(library_path: Union[str, Path],
         # For now, create a single EPUB with all text content
         # Future enhancement: split into chapters/books based on structure
         try:
-                # Try to use existing extracted text first (if available)
-                extracted_txt_path = lib.library_path / volume_id / "Data" / "TEXT_extracted.txt"
-                if extracted_txt_path.exists():
-                    # Use the working extracted text file
-                    with open(extracted_txt_path, 'r', encoding='latin-1', errors='replace') as f:
-                        text_content = {'content': f.read()}
-                    print(f"[OK] Using existing extracted text from TEXT_extracted.txt")
-                else:
-                    # Fall back to decompressor (which may not work properly)
-                    from .directmedia_decompressor import DirectmediaDecompressor
-                    decompressor = DirectmediaDecompressor()
-                    text_dki_path = lib.library_path / volume_id / "Data" / "TEXT.DKI"
-                    if text_dki_path.exists():
-                        extraction_result = decompressor.extract_text_content(text_dki_path, max_sections=20)
-                        # Combine all extracted text sections
-                        extracted_texts = []
-                        for section in extraction_result['extracted_sections']:
-                            for record in section.get('records', []):
-                                if 'text_content' in record and record['text_content']:
-                                    extracted_texts.append(record['text_content'])
-                        text_content = {'content': '\n\n'.join(extracted_texts)}
-                    else:
-                        text_content = lib.get_text_content(volume_id, length=50000)  # Fallback
+            # Try to use existing extracted text first (if available)
+            extracted_txt_path = lib.library_path / volume_id / "Data" / "TEXT_extracted.txt"
+            if extracted_txt_path.exists():
+                # Use the working extracted text file
+                with open(extracted_txt_path, encoding="latin-1", errors="replace") as f:
+                    text_content = {"content": f.read()}
+                print("[OK] Using existing extracted text from TEXT_extracted.txt")
+            else:
+                # Fall back to decompressor (which may not work properly)
+                from .directmedia_decompressor import DirectmediaDecompressor
 
-            if text_content and 'content' in text_content:
+                decompressor = DirectmediaDecompressor()
+                text_dki_path = lib.library_path / volume_id / "Data" / "TEXT.DKI"
+                if text_dki_path.exists():
+                    extraction_result = decompressor.extract_text_content(text_dki_path, max_sections=20)
+                    # Combine all extracted text sections
+                    extracted_texts = []
+                    for section in extraction_result["extracted_sections"]:
+                        for record in section.get("records", []):
+                            if record.get("text_content"):
+                                extracted_texts.append(record["text_content"])
+                    text_content = {"content": "\n\n".join(extracted_texts)}
+                else:
+                    text_content = lib.get_text_content(volume_id, length=50000)  # Fallback
+
+            if text_content and "content" in text_content:
                 book_data = {
-                    'title': volume_info.title,
-                    'author': 'Various Authors',  # Could be enhanced to extract from content
-                    'content': text_content['content'],
-                    'volume_id': volume_id,
-                    'volume_title': volume_info.title,
-                    'lang': 'de'  # German content
+                    "title": volume_info.title,
+                    "author": "Various Authors",  # Could be enhanced to extract from content
+                    "content": text_content["content"],
+                    "volume_id": volume_id,
+                    "volume_title": volume_info.title,
+                    "lang": "de",  # German content
                 }
 
                 if create_single_epub(book_data, output_dir):
@@ -461,17 +451,17 @@ def convert_volume_to_epub(library_path: Union[str, Path],
                 results["errors"].append(f"No text content found for volume {volume_id}")
 
         except Exception as e:
-            results["errors"].append(f"Error processing volume {volume_id}: {str(e)}")
+            results["errors"].append(f"Error processing volume {volume_id}: {e!s}")
 
     except Exception as e:
-        results["errors"].append(f"Error initializing library: {str(e)}")
+        results["errors"].append(f"Error initializing library: {e!s}")
 
     return results
 
 
-def batch_convert_library(library_path: Union[str, Path],
-                         output_dir: Union[str, Path],
-                         volume_filter: Optional[List[str]] = None) -> Dict[str, Any]:
+def batch_convert_library(
+    library_path: str | Path, output_dir: str | Path, volume_filter: list[str] | None = None
+) -> dict[str, Any]:
     """
     Convert multiple Directmedia volumes to EPUB format.
     """
@@ -482,7 +472,7 @@ def batch_convert_library(library_path: Union[str, Path],
         "epub_files_created": 0,
         "errors": [],
         "volumes_converted": [],
-        "output_dir": str(Path(output_dir))
+        "output_dir": str(Path(output_dir)),
     }
 
     try:
@@ -510,7 +500,7 @@ def batch_convert_library(library_path: Union[str, Path],
                 results["errors"].extend(volume_result["errors"])
 
     except Exception as e:
-        results["errors"].append(f"Batch conversion failed: {str(e)}")
+        results["errors"].append(f"Batch conversion failed: {e!s}")
 
     print("\nBatch conversion complete:")
     print(f"  Volumes processed: {results['total_volumes_processed']}")

@@ -9,7 +9,7 @@ export function Topbar() {
         <header className="flex h-14 items-center justify-between border-b border-slate-800 bg-slate-950/50 px-6 backdrop-blur-xl">
             <div className="flex items-center gap-4">
                 <h1 className="text-sm font-medium text-slate-400">
-                    Navigation / <span className="text-slate-100">Control Center</span>
+                    Digitale Bibliothek / <span className="text-slate-100">Directmedia MCP</span>
                 </h1>
             </div>
 

@@ -4,16 +4,16 @@ Directmedia MCP Server - Access to Directmedia Publishing Digitale Bibliothek
 """
 
 import os
-import sys
-from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any
 
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastmcp import FastMCP
 from fastmcp.server import create_proxy
 from pydantic import BaseModel, Field
 
+from .epub_converter import batch_convert_library, convert_volume_to_epub
 from .library import DirectmediaLibrary
-from .epub_converter import convert_volume_to_epub, batch_convert_library
 from .logging_config import get_logger
 
 logger = get_logger("directmedia_mcp")
@@ -34,11 +34,11 @@ if bridge_urls:
             try:
                 mcp.add_provider(create_proxy(url))
                 _bridge_proxies.append(url)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Skipping bridge URL %s: %s", url, exc)
 
 # Global library instance
-library: Optional[DirectmediaLibrary] = None
+library: DirectmediaLibrary | None = None
 
 
 class VolumeInfo(BaseModel):
@@ -72,7 +72,7 @@ def initialize_library(library_path: str) -> DirectmediaLibrary:
 
 
 @mcp.tool()
-async def list_volumes() -> List[Dict[str, Any]]:
+async def list_volumes() -> list[dict[str, Any]]:
     """
     List all available Directmedia volumes/bände
 
@@ -102,11 +102,11 @@ async def list_volumes() -> List[Dict[str, Any]]:
         return result
     except Exception as e:
         logger.error(f"Error listing volumes: {e}")
-        return [{"error": f"Failed to list volumes: {str(e)}"}]
+        return [{"error": f"Failed to list volumes: {e!s}"}]
 
 
 @mcp.tool()
-async def get_volume_info(volume_id: str) -> Dict[str, Any]:
+async def get_volume_info(volume_id: str) -> dict[str, Any]:
     """
     Get detailed information about a specific volume
 
@@ -134,13 +134,11 @@ async def get_volume_info(volume_id: str) -> Dict[str, Any]:
             return {"error": f"Volume {volume_id} not found"}
     except Exception as e:
         logger.error(f"Error getting volume info for {volume_id}: {e}")
-        return {"error": f"Failed to get volume info: {str(e)}"}
+        return {"error": f"Failed to get volume info: {e!s}"}
 
 
 @mcp.tool()
-async def search_text(
-    query: str, volume_id: Optional[str] = None, limit: int = 20
-) -> List[Dict[str, Any]]:
+async def search_text(query: str, volume_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
     """
     Search for text across volumes
 
@@ -160,13 +158,11 @@ async def search_text(
         return [asdict(result) for result in results]
     except Exception as e:
         logger.error(f"Error searching text '{query}': {e}")
-        return [{"error": f"Failed to search: {str(e)}"}]
+        return [{"error": f"Failed to search: {e!s}"}]
 
 
 @mcp.tool()
-async def get_text_content(
-    volume_id: str, start_pos: int = 0, length: int = 1000
-) -> Dict[str, Any]:
+async def get_text_content(volume_id: str, start_pos: int = 0, length: int = 1000) -> dict[str, Any]:
     """
     Extract text content from a volume
 
@@ -188,11 +184,11 @@ async def get_text_content(
         }
     except Exception as e:
         logger.error(f"Error getting text content from {volume_id}: {e}")
-        return {"error": f"Failed to get text content: {str(e)}"}
+        return {"error": f"Failed to get text content: {e!s}"}
 
 
 @mcp.tool()
-async def get_navigation_tree(volume_id: str) -> Dict[str, Any]:
+async def get_navigation_tree(volume_id: str) -> dict[str, Any]:
     """
     Get the navigation tree/structure for a volume
 
@@ -207,11 +203,11 @@ async def get_navigation_tree(volume_id: str) -> Dict[str, Any]:
         return tree
     except Exception as e:
         logger.error(f"Error getting navigation tree for {volume_id}: {e}")
-        return {"error": f"Failed to get navigation tree: {str(e)}"}
+        return {"error": f"Failed to get navigation tree: {e!s}"}
 
 
 @mcp.tool()
-async def analyze_volume_structure(volume_id: str) -> Dict[str, Any]:
+async def analyze_volume_structure(volume_id: str) -> dict[str, Any]:
     """
     Analyze the file structure and format of a volume
 
@@ -226,11 +222,11 @@ async def analyze_volume_structure(volume_id: str) -> Dict[str, Any]:
         return analysis
     except Exception as e:
         logger.error(f"Error analyzing volume {volume_id}: {e}")
-        return {"error": f"Failed to analyze volume: {str(e)}"}
+        return {"error": f"Failed to analyze volume: {e!s}"}
 
 
 @mcp.tool()
-async def set_library_path(path: str) -> Dict[str, Any]:
+async def set_library_path(path: str) -> dict[str, Any]:
     """
     Set the path to the Digitale Bibliothek collection
 
@@ -242,11 +238,7 @@ async def set_library_path(path: str) -> Dict[str, Any]:
             return {"error": f"Path does not exist: {path}"}
 
         # Check if it looks like a Directmedia library
-        db_folders = [
-            f
-            for f in os.listdir(path)
-            if f.startswith("DB") and os.path.isdir(os.path.join(path, f))
-        ]
+        db_folders = [f for f in os.listdir(path) if f.startswith("DB") and os.path.isdir(os.path.join(path, f))]
         if not db_folders:
             return {"error": f"No Directmedia volumes (DBxxx folders) found in {path}"}
 
@@ -261,11 +253,11 @@ async def set_library_path(path: str) -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Error setting library path: {e}")
-        return {"error": f"Failed to initialize library: {str(e)}"}
+        return {"error": f"Failed to initialize library: {e!s}"}
 
 
 @mcp.tool()
-async def convert_volume_to_epub_file(volume_id: str, output_dir: str) -> Dict[str, Any]:
+async def convert_volume_to_epub_file(volume_id: str, output_dir: str) -> dict[str, Any]:
     """
     Convert a Directmedia volume to EPUB format for e-book readers
 
@@ -304,13 +296,11 @@ async def convert_volume_to_epub_file(volume_id: str, output_dir: str) -> Dict[s
 
     except Exception as e:
         logger.error(f"Error converting volume {volume_id} to EPUB: {e}")
-        return {"error": f"EPUB conversion failed: {str(e)}"}
+        return {"error": f"EPUB conversion failed: {e!s}"}
 
 
 @mcp.tool()
-async def batch_convert_to_epub(
-    output_dir: str, volume_ids: Optional[List[str]] = None
-) -> Dict[str, Any]:
+async def batch_convert_to_epub(output_dir: str, volume_ids: list[str] | None = None) -> dict[str, Any]:
     """
     Convert multiple Directmedia volumes to EPUB format
 
@@ -343,13 +333,80 @@ async def batch_convert_to_epub(
 
     except Exception as e:
         logger.error(f"Error in batch EPUB conversion: {e}")
-        return {"error": f"Batch conversion failed: {str(e)}"}
+        return {"error": f"Batch conversion failed: {e!s}"}
+
+
+app = FastAPI(title="Directmedia MCP API", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+@app.get("/health")
+async def health() -> dict[str, Any]:
+    return {
+        "status": "healthy",
+        "service": "directmedia-mcp",
+        "library_initialized": library is not None,
+    }
+
+
+@app.get("/api/v1/status")
+async def api_status() -> dict[str, Any]:
+    volume_count = 0
+    library_path: str | None = None
+    if library is not None:
+        library_path = str(library.library_path)
+        try:
+            volume_count = len(library.list_volumes())
+        except Exception as exc:
+            logger.warning("Could not count volumes: %s", exc)
+
+    return {
+        "status": "healthy",
+        "service": "directmedia-mcp",
+        "library_initialized": library is not None,
+        "library_path": library_path,
+        "volume_count": volume_count,
+        "tools": [
+            "set_library_path",
+            "list_volumes",
+            "get_volume_info",
+            "search_text",
+            "get_text_content",
+            "get_navigation_tree",
+            "analyze_volume_structure",
+            "convert_volume_to_epub_file",
+            "batch_convert_to_epub",
+        ],
+    }
+
+
+@app.post("/api/v1/call")
+async def api_call_tool(request: dict[str, Any]) -> Any:
+    """Bridge for web_sota to invoke MCP tools over HTTP."""
+    name = request.get("name")
+    arguments = request.get("arguments") or {}
+    if not name:
+        raise HTTPException(status_code=400, detail="Tool name is required")
+    try:
+        logger.info("Web bridge calling tool %s", name)
+        return await mcp.call_tool(name, arguments)
+    except Exception as exc:
+        logger.exception("Tool call failed: %s", name)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+app.mount("/mcp", mcp.http_app())
 
 
 def main():
     """Main entry point with unified transport handling (FastMCP 2.14.4+)."""
-    from .transport import create_argument_parser, resolve_transport, run_server
     import logging as log_module
+
+    from .transport import create_argument_parser, run_server
 
     # Create parser with custom arguments
     parser = create_argument_parser(server_name="DirectmediaMCP")

@@ -2,11 +2,12 @@ import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/common/utils';
 import {
     LayoutDashboard,
-    Bot,
+    BookOpen,
+    Search,
     Settings,
     ChevronLeft,
     ChevronRight,
-    Activity
+    Library,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -19,7 +20,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
     const navItems = [
         { href: '/', label: 'Overview', icon: LayoutDashboard },
-        { href: '/chat', label: 'AI Command', icon: Bot },
+        { href: '/volumes', label: 'Volumes', icon: BookOpen },
+        { href: '/search', label: 'Search', icon: Search },
         { href: '/settings', label: 'Settings', icon: Settings },
     ];
 
@@ -32,14 +34,17 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         >
             <div className="flex h-16 items-center border-b border-slate-800 px-4">
                 <div className="flex items-center gap-2 font-semibold text-slate-100">
-                    <Activity className="h-6 w-6 text-blue-500" />
-                    {!collapsed && <span className="animate-in fade-in duration-300">DirectMedia MCP</span>}
+                    <Library className="h-6 w-6 text-amber-500" />
+                    {!collapsed && <span className="animate-in fade-in duration-300">Directmedia MCP</span>}
                 </div>
             </div>
 
             <nav className="flex-1 space-y-1 p-2">
                 {navItems.map((item) => {
-                    const isActive = location.pathname === item.href;
+                    const isActive =
+                        item.href === '/'
+                            ? location.pathname === '/'
+                            : location.pathname.startsWith(item.href);
                     return (
                         <Link
                             key={item.href}
@@ -50,10 +55,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                                 collapsed ? "justify-center" : "justify-start"
                             )}
                         >
-                            <item.icon className={cn("h-5 w-5", !collapsed && "mr-3", isActive && "text-blue-400")} />
+                            <item.icon className={cn("h-5 w-5", !collapsed && "mr-3", isActive && "text-amber-400")} />
                             {!collapsed && <span>{item.label}</span>}
 
-                            {/* Tooltip for collapsed mode */}
                             {collapsed && (
                                 <div className="absolute left-full ml-2 hidden rounded bg-slate-800 px-2 py-1 text-xs text-white group-hover:block z-50 whitespace-nowrap">
                                     {item.label}

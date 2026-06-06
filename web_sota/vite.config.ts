@@ -10,8 +10,13 @@ export default defineConfig({
     },
   },
   server: {
-    port: 10706,
+    allowedHosts: ['goliath'],
+    port: 10826,
     strictPort: true,
     host: "127.0.0.1",
+    proxy: {
+      "/api": { target: "http://127.0.0.1:10827", changeOrigin: true },
+      "/health": { target: "http://127.0.0.1:10827", changeOrigin: true },
+    },
   }
 });
