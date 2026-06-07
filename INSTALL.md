@@ -2,6 +2,8 @@
 
 ## 🚀 Quick Start (recommended)
 
+`start.bat` / `web_sota\start.bat` are **self-contained** (vendored `scripts/FleetStartMode.ps1`). You do **not** need `mcp-central-docs` cloned.
+
 ```powershell
 # Install just if you don't have it
 winget install Casey.Just    # Windows

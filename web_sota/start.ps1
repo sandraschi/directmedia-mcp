@@ -9,7 +9,12 @@ $BackendPort = 10827
 $WebRoot = $PSScriptRoot
 $ProjectRoot = Split-Path -Parent $WebRoot
 
-. "D:/Dev/repos/mcp-central-docs/standards/FleetStartMode.ps1"
+$FleetStartPath = Join-Path $ProjectRoot "scripts\FleetStartMode.ps1"
+if (-not (Test-Path -LiteralPath $FleetStartPath)) {
+    Write-Host "ERROR: Missing vendored launcher helper: $FleetStartPath" -ForegroundColor Red
+    exit 1
+}
+. $FleetStartPath
 $FleetStart = Initialize-FleetStartMode @PSBoundParameters
 Enter-FleetHeadlessConsole -Headless:$Headless -BackendOnly:$BackendOnly
 Stop-FleetPortSquatters -Ports @($WebPort, $BackendPort) -Label "directmedia-mcp"

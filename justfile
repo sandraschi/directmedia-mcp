@@ -1,10 +1,22 @@
 set windows-shell := ["pwsh.exe", "-NoLogo", "-Command"]
 
-# ── Dashboard ─────────────────────────────────────────────────────────────────
+REPO := justfile_directory()
 
-# Open the interactive recipe dashboard in the browser
+# List recipes (no private mcp-central-docs dependency)
 default:
-    @pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ../mcp-central-docs/scripts/just-dashboard.ps1 -Path .
+    @just --list
+
+# Install Python + frontend deps
+bootstrap:
+    Set-Location "{{REPO}}"; uv sync --project .
+    Set-Location "{{REPO}}\web_sota"; npm install
+
+# Full stack via start.bat
+serve:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{REPO}}\web_sota\start.ps1"
+
+serve-backend:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{REPO}}\web_sota\start.ps1" -BackendOnly -NoBrowser
 
 # ── Quality ───────────────────────────────────────────────────────────────────
 
