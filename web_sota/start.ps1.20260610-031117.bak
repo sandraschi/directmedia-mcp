@@ -1,8 +1,8 @@
 param(
     [switch]$Headless,
     [switch]$BackendOnly,
-    [switch]$NoBrowser,
-    [switch]$ReuseIfRunning)
+    [switch]$NoBrowser
+)
 
 $WebPort = 10826
 $BackendPort = 10827
@@ -17,21 +17,8 @@ if (-not (Test-Path -LiteralPath $FleetStartPath)) {
 . $FleetStartPath
 $FleetStart = Initialize-FleetStartMode @PSBoundParameters
 Enter-FleetHeadlessConsole -Headless:$Headless -BackendOnly:$BackendOnly
-
-$portResolve = @{
-    Ports      = @($WebPort, $BackendPort)
-    Label      = "directmedia-mcp"
-    AllowReuse = $ReuseIfRunning
-}
-if ($ReuseIfRunning) {
-    $portResolve.HealthChecks = @{
-        $WebPort = "http://127.0.0.1:$WebPort/"
-        $BackendPort = "http://127.0.0.1:$BackendPort/health"
-    }
-}
-$portState = Resolve-FleetPortConflict @portResolve
-if ($portState.Action -eq 'Blocked') { exit 1 }
-if ($portState.Reuse) { return }if (-not (Assert-FleetPortsAvailable -Ports @($WebPort, $BackendPort) -Label "directmedia-mcp")) {
+Stop-FleetPortSquatters -Ports @($WebPort, $BackendPort) -Label "directmedia-mcp"
+if (-not (Assert-FleetPortsAvailable -Ports @($WebPort, $BackendPort) -Label "directmedia-mcp")) {
     exit 1
 }
 
