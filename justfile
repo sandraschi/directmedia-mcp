@@ -1,4 +1,5 @@
 set windows-shell := ["pwsh.exe", "-NoLogo", "-Command"]
+import 'scripts/just/fleet.just'
 
 REPO := justfile_directory()
 

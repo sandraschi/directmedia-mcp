@@ -5,6 +5,8 @@ import { Volumes } from '@/pages/volumes';
 import { VolumeDetail } from '@/pages/volume-detail';
 import { Search } from '@/pages/search';
 import { Settings } from '@/pages/settings';
+import FloatingChat from '@/components/FloatingChat';
+import Logging from '@/pages/Logging';
 
 function App() {
   return (
@@ -17,9 +19,11 @@ function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/chat" element={<Navigate to="/search" replace />} />
+          <Route path="/logging" element={<Logging />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AppLayout>
+      <FloatingChat />
     </Router>
   );
 }

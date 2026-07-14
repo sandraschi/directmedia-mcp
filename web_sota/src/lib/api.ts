@@ -29,8 +29,8 @@ export interface SearchHit {
 const STORAGE_LIBRARY = "directmedia.library_path";
 const STORAGE_EPUB_OUT = "directmedia.epub_output_dir";
 
-/** Dev: Vite proxies /api → :10827. Override with VITE_BACKEND_URL for direct access. */
-const API_BASE = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+/** Dev: Vite proxies /api -> :10827. Override with VITE_BACKEND_URL for direct access. */
+export const API_BASE = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:10827";
 
 export function formatFetchError(error: unknown): string {
   if (error instanceof TypeError && /fetch/i.test(error.message)) {

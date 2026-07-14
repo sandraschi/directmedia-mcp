@@ -469,7 +469,7 @@ async def startup_init_library() -> None:
         logger.warning("Could not auto-initialize library: %s", exc)
 
 
-app.mount("/mcp", mcp.http_app())
+app.mount("/mcp", mcp.http_app(path="/"))
 
 
 def main():

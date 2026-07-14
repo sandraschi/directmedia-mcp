@@ -8,6 +8,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Library,
+    ScrollText,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -23,6 +24,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         { href: '/volumes', label: 'Volumes', icon: BookOpen },
         { href: '/search', label: 'Search', icon: Search },
         { href: '/settings', label: 'Settings', icon: Settings },
+    { href: '/logging', label: 'Logging', icon: ScrollText },
     ];
 
     return (
