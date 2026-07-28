@@ -22,12 +22,12 @@ classifiers = [
 ]
 keywords = ["directmedia", "mcp", "publishing", "bibliothek", "media", "fastmcp"]
 dependencies = [
-    "fastmcp>=3.4.2,<4",
+    "fastmcp>=3.4.4,<4",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "prefab-ui>=0.14.0",
     "pydantic>=2.0.0",
-    "ruff>=0.15.2",
+    "ruff>=0.16.0,<0.17",
 ]
 
 [project.optional-dependencies]
@@ -64,8 +64,11 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "S", "UP", "RUF"]
-ignore = ["S101", "B008"]
+ignore = ["S101", "B008", "S106", "S110", "S112", "RUF012"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.16.0,<0.17"]
