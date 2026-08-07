@@ -362,7 +362,8 @@ async def batch_convert_to_epub(output_dir: str, volume_ids: list[str] | None = 
         return {"error": f"Batch conversion failed: {e!s}"}
 
 
-app = FastAPI(title="Directmedia MCP API", version="0.1.0")
+_mcp_http = mcp.http_app(path="/")
+app = FastAPI(title="Directmedia MCP API", version="0.1.0", lifespan=_mcp_http.lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -370,6 +371,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 @app.get("/health")
 async def health() -> dict[str, Any]:
     return {
@@ -469,7 +472,7 @@ async def startup_init_library() -> None:
         logger.warning("Could not auto-initialize library: %s", exc)
 
 
-app.mount("/mcp", mcp.http_app(path="/"))
+app.mount("/mcp", _mcp_http)
 
 
 def main():

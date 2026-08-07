@@ -4,12 +4,12 @@ Directmedia Library - Access to Directmedia Publishing Digitale Bibliothek
 
 import os
 import struct
-from pathlib import Path
-from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
-from .logging_config import get_logger
 from .directmedia_decompressor import DirectmediaDecompressor
+from .logging_config import get_logger
 
 logger = get_logger("directmedia_mcp.library")
 
@@ -17,6 +17,7 @@ logger = get_logger("directmedia_mcp.library")
 @dataclass
 class VolumeInfo:
     """Information about a library volume"""
+
     id: str
     title: str
     short_title: str
@@ -30,6 +31,7 @@ class VolumeInfo:
 @dataclass
 class SearchResult:
     """Search result"""
+
     volume_id: str
     title: str
     content_preview: str
@@ -44,17 +46,17 @@ class DirectmediaLibrary:
         if not self.library_path.exists():
             raise ValueError(f"Library path does not exist: {library_path}")
 
-        self._volumes_cache: Optional[List[VolumeInfo]] = None
+        self._volumes_cache: list[VolumeInfo] | None = None
         logger.info(f"Initialized Directmedia library at {library_path}")
 
-    def list_volumes(self) -> List[VolumeInfo]:
+    def list_volumes(self) -> list[VolumeInfo]:
         """List all available volumes"""
         if self._volumes_cache is not None:
             return self._volumes_cache
 
         volumes = []
         for item in self.library_path.iterdir():
-            if item.is_dir() and item.name.startswith('DB'):
+            if item.is_dir() and item.name.startswith("DB"):
                 try:
                     volume_info = self._get_volume_info(item.name)
                     if volume_info:
@@ -67,7 +69,7 @@ class DirectmediaLibrary:
         self._volumes_cache = volumes
         return volumes
 
-    def _get_volume_info(self, volume_id: str) -> Optional[VolumeInfo]:
+    def _get_volume_info(self, volume_id: str) -> VolumeInfo | None:
         """Get information about a specific volume"""
 
         volume_path = self.library_path / volume_id
@@ -81,13 +83,13 @@ class DirectmediaLibrary:
 
         if digibib_path.exists():
             try:
-                with open(digibib_path, 'r', encoding='latin-1') as f:
+                with open(digibib_path, encoding="latin-1") as f:
                     content = f.read()
-                    for line in content.split('\n'):
-                        if line.startswith('Caption='):
-                            title = line.split('=', 1)[1].strip()
-                        elif line.startswith('ShortTitle='):
-                            short_title = line.split('=', 1)[1].strip()
+                    for line in content.split("\n"):
+                        if line.startswith("Caption="):
+                            title = line.split("=", 1)[1].strip()
+                        elif line.startswith("ShortTitle="):
+                            short_title = line.split("=", 1)[1].strip()
             except Exception as e:
                 logger.warning(f"Error reading DIGIBIB.TXT for {volume_id}: {e}")
 
@@ -104,11 +106,11 @@ class DirectmediaLibrary:
                     stat_info = filepath.stat()
                     total_size += stat_info.st_size
 
-                    if file.upper() == 'TEXT.DKI':
+                    if file.upper() == "TEXT.DKI":
                         has_text = True
-                    elif file.lower().endswith(('.bmp', '.jpg', '.jpeg', '.png')):
+                    elif file.lower().endswith((".bmp", ".jpg", ".jpeg", ".png")):
                         has_images = True
-                    elif file.lower().endswith(('.wav', '.mp3')):
+                    elif file.lower().endswith((".wav", ".mp3")):
                         has_audio = True
         except Exception as e:
             logger.warning(f"Error calculating size for {volume_id}: {e}")
@@ -121,10 +123,10 @@ class DirectmediaLibrary:
             size_mb=round(total_size / 1024 / 1024, 1),
             has_text=has_text,
             has_images=has_images,
-            has_audio=has_audio
+            has_audio=has_audio,
         )
 
-    def get_volume_info(self, volume_id: str) -> Optional[VolumeInfo]:
+    def get_volume_info(self, volume_id: str) -> VolumeInfo | None:
         """Get detailed information about a volume"""
         volumes = self.list_volumes()
         for volume in volumes:
@@ -132,7 +134,7 @@ class DirectmediaLibrary:
                 return volume
         return None
 
-    def search_text(self, query: str, volume_id: Optional[str] = None, limit: int = 20) -> List[SearchResult]:
+    def search_text(self, query: str, volume_id: str | None = None, limit: int = 20) -> list[SearchResult]:
         """Search for text in volumes"""
         results = []
 
@@ -156,7 +158,7 @@ class DirectmediaLibrary:
         results.sort(key=lambda r: r.position)
         return results[:limit]
 
-    def _search_volume_text(self, volume_id: str, query: str, limit: int) -> List[SearchResult]:
+    def _search_volume_text(self, volume_id: str, query: str, limit: int) -> list[SearchResult]:
         """Search text in a specific volume"""
         # For now, implement basic text extraction and search
         # This is a simplified implementation - real implementation would use INDEX files
@@ -164,8 +166,8 @@ class DirectmediaLibrary:
         results = []
         text_content = self.get_text_content(volume_id, 0, 50000)  # First 50KB
 
-        if 'content' in text_content:
-            content = text_content['content'].lower()
+        if "content" in text_content:
+            content = text_content["content"].lower()
             query_lower = query.lower()
 
             pos = 0
@@ -179,18 +181,20 @@ class DirectmediaLibrary:
                 end = min(len(content), found_pos + len(query) + 50)
                 preview = content[start:end]
 
-                results.append(SearchResult(
-                    volume_id=volume_id,
-                    title=f"Match in {volume_id}",
-                    content_preview="..." + preview + "...",
-                    position=found_pos
-                ))
+                results.append(
+                    SearchResult(
+                        volume_id=volume_id,
+                        title=f"Match in {volume_id}",
+                        content_preview="..." + preview + "...",
+                        position=found_pos,
+                    )
+                )
 
                 pos = found_pos + 1
 
         return results
 
-    def get_text_content(self, volume_id: str, start_pos: int = 0, length: int = 1000) -> Dict[str, Any]:
+    def get_text_content(self, volume_id: str, start_pos: int = 0, length: int = 1000) -> dict[str, Any]:
         """Extract text content from a volume"""
 
         volume = self.get_volume_info(volume_id)
@@ -202,7 +206,7 @@ class DirectmediaLibrary:
             self.library_path / volume_id / "Data" / "TEXT.DKI",
             self.library_path / volume_id / "DATA" / "TEXT.DKI",
             self.library_path / volume_id / "Text.dki",
-            self.library_path / volume_id / "TEXT.DKI"
+            self.library_path / volume_id / "TEXT.DKI",
         ]
 
         text_dki_path = None
@@ -223,15 +227,15 @@ class DirectmediaLibrary:
             all_text_parts = []
             total_records = 0
 
-            for section in result['extracted_sections']:
-                if 'records' in section:
-                    for record in section['records']:
-                        if 'text_content' in record and record['text_content']:
-                            all_text_parts.append(record['text_content'])
+            for section in result["extracted_sections"]:
+                if "records" in section:
+                    for record in section["records"]:
+                        if record.get("text_content"):
+                            all_text_parts.append(record["text_content"])
                             total_records += 1
 
             # Combine all text
-            full_text = '\n\n'.join(all_text_parts)
+            full_text = "\n\n".join(all_text_parts)
 
             # Apply start_pos and length limits if specified
             if start_pos > 0:
@@ -242,18 +246,18 @@ class DirectmediaLibrary:
             return {
                 "volume_id": volume_id,
                 "start_position": start_pos,
-                "length": len(full_text.encode('utf-8')),
+                "length": len(full_text.encode("utf-8")),
                 "content": full_text,
-                "sections_processed": len(result['extracted_sections']),
+                "sections_processed": len(result["extracted_sections"]),
                 "total_records_found": total_records,
-                "extraction_errors": len(result.get('errors', []))
+                "extraction_errors": len(result.get("errors", [])),
             }
 
         except Exception as e:
             logger.error(f"Error reading text from {volume_id}: {e}")
-            return {"error": f"Failed to read text: {str(e)}"}
+            return {"error": f"Failed to read text: {e!s}"}
 
-    def get_navigation_tree(self, volume_id: str) -> Dict[str, Any]:
+    def get_navigation_tree(self, volume_id: str) -> dict[str, Any]:
         """Get navigation tree (table of contents) for a volume"""
 
         volume = self.get_volume_info(volume_id)
@@ -262,12 +266,7 @@ class DirectmediaLibrary:
 
         tree_dki_path = self.library_path / volume_id / "Data" / "TREE.DKI"
 
-        tree_info = {
-            "volume_id": volume_id,
-            "tree_files": {},
-            "structure": "unknown",
-            "table_of_contents": []
-        }
+        tree_info = {"volume_id": volume_id, "tree_files": {}, "structure": "unknown", "table_of_contents": []}
 
         # Parse TREE.DKI for table of contents
         if tree_dki_path.exists():
@@ -277,7 +276,7 @@ class DirectmediaLibrary:
                 tree_info["table_of_contents"] = toc_entries
                 tree_info["tree_files"]["TREE.DKI"] = {
                     "size": tree_dki_path.stat().st_size,
-                    "entries": len(toc_entries)
+                    "entries": len(toc_entries),
                 }
             except Exception as e:
                 logger.warning(f"Error parsing TREE.DKI: {e}")
@@ -287,25 +286,25 @@ class DirectmediaLibrary:
         tree_dka_path = self.library_path / volume_id / "Data" / "TREE.DKA"
         if tree_dka_path.exists():
             try:
-                with open(tree_dka_path, 'rb') as f:
+                with open(tree_dka_path, "rb") as f:
                     header = f.read(64)
                     if len(header) >= 8:
-                        num_entries = struct.unpack('<I', header[:4])[0]
-                        data_offset = struct.unpack('<I', header[4:8])[0]
+                        num_entries = struct.unpack("<I", header[:4])[0]
+                        data_offset = struct.unpack("<I", header[4:8])[0]
                         tree_info["tree_files"]["TREE.DKA"] = {
                             "size": tree_dka_path.stat().st_size,
                             "num_entries": num_entries,
-                            "data_offset": data_offset
+                            "data_offset": data_offset,
                         }
             except Exception as e:
                 logger.warning(f"Error analyzing TREE.DKA: {e}")
 
         return tree_info
 
-    def _parse_tree_dki(self, tree_dki_path: Path) -> List[Dict[str, Any]]:
+    def _parse_tree_dki(self, tree_dki_path: Path) -> list[dict[str, Any]]:
         """Parse TREE.DKI file to extract hierarchical table of contents"""
 
-        with open(tree_dki_path, 'rb') as f:
+        with open(tree_dki_path, "rb") as f:
             data = f.read()
 
         toc_entries = []
@@ -318,17 +317,19 @@ class DirectmediaLibrary:
                 if current_line:
                     line_bytes = bytes(current_line)
                     try:
-                        line_text = line_bytes.decode('latin-1', errors='replace').rstrip()
+                        line_text = line_bytes.decode("latin-1", errors="replace").rstrip()
                         if line_text.strip():  # Skip empty lines
                             # Calculate indentation level (number of leading spaces)
-                            indent_level = len(line_text) - len(line_text.lstrip(' '))
+                            indent_level = len(line_text) - len(line_text.lstrip(" "))
                             clean_text = line_text.strip()
 
-                            toc_entries.append({
-                                "text": clean_text,
-                                "level": indent_level // 2,  # Each level uses 2 spaces
-                                "offset": len(toc_entries)  # Sequential index
-                            })
+                            toc_entries.append(
+                                {
+                                    "text": clean_text,
+                                    "level": indent_level // 2,  # Each level uses 2 spaces
+                                    "offset": len(toc_entries),  # Sequential index
+                                }
+                            )
                     except UnicodeDecodeError:
                         pass
                     current_line = []
@@ -342,7 +343,7 @@ class DirectmediaLibrary:
 
         return toc_entries
 
-    def analyze_volume_structure(self, volume_id: str) -> Dict[str, Any]:
+    def analyze_volume_structure(self, volume_id: str) -> dict[str, Any]:
         """Analyze the file structure of a volume"""
 
         volume_path = self.library_path / volume_id
@@ -355,7 +356,7 @@ class DirectmediaLibrary:
             "image_files": {},
             "audio_files": {},
             "other_files": {},
-            "total_size_mb": 0
+            "total_size_mb": 0,
         }
 
         data_path = volume_path / "Data"
@@ -369,42 +370,37 @@ class DirectmediaLibrary:
                     ext = file_path.suffix.upper()
                     filename = file_path.name.upper()
 
-                    if ext in ['.DKI', '.DKA']:
+                    if ext in [".DKI", ".DKA"]:
                         analysis["data_files"][file_path.name] = {
                             "size": size,
-                            "description": self._get_file_description(file_path.name)
+                            "description": self._get_file_description(file_path.name),
                         }
-                    elif ext in ['.HTX', '.PLX', '.SHX', '.SWX', '.TTX', '.WLX']:
+                    elif ext in [".HTX", ".PLX", ".SHX", ".SWX", ".TTX", ".WLX"]:
                         index_type = self._get_index_type(file_path.name)
                         analysis["data_files"][file_path.name] = {
                             "size": size,
                             "type": "index",
-                            "index_type": index_type
+                            "index_type": index_type,
                         }
-                    elif filename.startswith('LINKS.'):
-                        analysis["data_files"][file_path.name] = {
-                            "size": size,
-                            "type": "links"
-                        }
-                    elif filename == 'SIGEL.DAT':
+                    elif filename.startswith("LINKS."):
+                        analysis["data_files"][file_path.name] = {"size": size, "type": "links"}
+                    elif filename == "SIGEL.DAT":
                         analysis["data_files"][file_path.name] = {
                             "size": size,
                             "type": "sigel",
-                            "description": "Abkürzungsverzeichnis"
+                            "description": "Abkürzungsverzeichnis",
                         }
                     else:
-                        analysis["data_files"][file_path.name] = {
-                            "size": size
-                        }
+                        analysis["data_files"][file_path.name] = {"size": size}
 
         # Check for images and audio in subdirectories
-        for subdir in ['IMAGES', 'Images', 'images', 'WAVS', 'Wavs']:
+        for subdir in ["IMAGES", "Images", "images", "WAVS", "Wavs"]:
             sub_path = volume_path / subdir
             if sub_path.exists():
-                file_count = len(list(sub_path.glob('*')))
-                if subdir.upper() in ['IMAGES', 'IMAGES']:
+                file_count = len(list(sub_path.glob("*")))
+                if subdir.upper() in ["IMAGES", "IMAGES"]:
                     analysis["image_files"][subdir] = file_count
-                elif subdir.upper() in ['WAVS', 'WAVS']:
+                elif subdir.upper() in ["WAVS", "WAVS"]:
                     analysis["audio_files"][subdir] = file_count
 
         analysis["total_size_mb"] = round(analysis["total_size_mb"], 1)
@@ -413,20 +409,20 @@ class DirectmediaLibrary:
     def _get_file_description(self, filename: str) -> str:
         """Get description for known file types"""
         descriptions = {
-            'TEXT.DKI': 'Haupttextdatenbank (komprimierter Volltext)',
-            'TREE.DKA': 'Navigationsbaum (Inhaltsverzeichnis)',
-            'TREE.DKI': 'Navigationsbaum (Strukturdaten)',
+            "TEXT.DKI": "Haupttextdatenbank (komprimierter Volltext)",
+            "TREE.DKA": "Navigationsbaum (Inhaltsverzeichnis)",
+            "TREE.DKI": "Navigationsbaum (Strukturdaten)",
         }
-        return descriptions.get(filename, 'Unbekannt')
+        return descriptions.get(filename, "Unbekannt")
 
     def _get_index_type(self, filename: str) -> str:
         """Get index type description"""
         index_types = {
-            'INDEX.HTX': 'Hypertext Index',
-            'INDEX.PLX': 'Plaintext Index',
-            'INDEX.SHX': 'Short Index',
-            'INDEX.SWX': 'Search Word Index',
-            'INDEX.TTX': 'Title Index',
-            'INDEX.WLX': 'Word List Index',
+            "INDEX.HTX": "Hypertext Index",
+            "INDEX.PLX": "Plaintext Index",
+            "INDEX.SHX": "Short Index",
+            "INDEX.SWX": "Search Word Index",
+            "INDEX.TTX": "Title Index",
+            "INDEX.WLX": "Word List Index",
         }
-        return index_types.get(filename, 'Unbekannt')
+        return index_types.get(filename, "Unbekannt")

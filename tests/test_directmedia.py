@@ -3,11 +3,13 @@
 Test script for Directmedia MCP functionality
 """
 
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from directmedia_mcp.library import DirectmediaLibrary
+
 
 def test_basic_functionality():
     """Test basic library functionality"""
@@ -43,12 +45,12 @@ def test_basic_functionality():
         # Test text extraction
         if volumes and volumes[0].has_text:
             content = lib.get_text_content(volumes[0].id, 0, 500)
-            if 'content' in content:
+            if "content" in content:
                 print(f"\n[OK] Text extraction from {volumes[0].id}:")
                 print(f"  Length: {len(content['content'])} characters")
                 # Safe preview that handles encoding issues
                 try:
-                    preview = content['content'][:100]
+                    preview = content["content"][:100]
                     print(f"  Preview: {preview}...")
                 except UnicodeEncodeError:
                     print("  Preview: [Text contains special characters]")
@@ -73,7 +75,9 @@ def test_basic_functionality():
     except Exception as e:
         print(f"[ERROR] Error: {e}")
         import traceback
+
         traceback.print_exc()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     test_basic_functionality()
