@@ -1,0 +1,22 @@
+{
+  "manifest_version": "0.2",
+  "name": "directmedia-mcp",
+  "version": "0.1.0-alpha.0",
+  "description": "MCP server for accessing Directmedia Publishing Digitale Bibliothek - AWAITING REVERSE ENGINEERING",
+  "author": { "name": "sandraschi" },
+  "server": {
+    "type": "python",
+    "entry_point": "src/directmedia_mcp/__main__.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run","--directory","${PWD}","python","-m","directmedia_mcp"],
+      "env": {
+        "PYTHONPATH": "${PWD}/src",
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  },
+  "tools": [
+    { "name": "list_volumes", "description": "list_volumes" }
+  ]
+}
