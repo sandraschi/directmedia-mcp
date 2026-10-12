@@ -1,12 +1,18 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AppLayout } from '@/components/layout/app-layout';
-import { Dashboard } from '@/pages/dashboard';
-import { Volumes } from '@/pages/volumes';
-import { VolumeDetail } from '@/pages/volume-detail';
-import { Search } from '@/pages/search';
-import { Settings } from '@/pages/settings';
-import FloatingChat from '@/components/FloatingChat';
-import Logging from '@/pages/Logging';
+import {
+  Navigate,
+  Route,
+  BrowserRouter as Router,
+  Routes,
+} from "react-router-dom";
+import FloatingChat from "@/components/FloatingChat";
+import { AppLayout } from "@/components/layout/app-layout";
+import { Dashboard } from "@/pages/dashboard";
+import Logging from "@/pages/Logging";
+import { Reader } from "@/pages/reader";
+import { Search } from "@/pages/search";
+import { Settings } from "@/pages/settings";
+import { VolumeDetail } from "@/pages/volume-detail";
+import { Volumes } from "@/pages/volumes";
 
 function App() {
   return (
@@ -16,6 +22,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/volumes" element={<Volumes />} />
           <Route path="/volumes/:volumeId" element={<VolumeDetail />} />
+          <Route path="/read/:volumeId/:record" element={<Reader />} />
           <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/chat" element={<Navigate to="/search" replace />} />
