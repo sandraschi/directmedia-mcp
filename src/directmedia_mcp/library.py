@@ -100,7 +100,7 @@ class DirectmediaLibrary:
         has_audio = False
 
         try:
-            for root, dirs, files in os.walk(volume_path):
+            for root, _dirs, files in os.walk(volume_path):
                 for file in files:
                     filepath = Path(root) / file
                     stat_info = filepath.stat()

@@ -407,7 +407,7 @@ class DirectmediaDecompressor:
         result = {"analysis": analysis, "extracted_sections": [], "total_extracted_size": 0, "errors": []}
 
         with open(file_path, "rb") as f:
-            file_size = analysis["file_size"]
+            analysis["file_size"]
             file_data = f.read()
 
             # Parse Directmedia TEXT.DKI format properly
@@ -607,7 +607,7 @@ class DirectmediaDecompressor:
                     except (zlib.error, UnicodeDecodeError):
                         pass
 
-            except:
+            except Exception:
                 pass
 
             i += 1
@@ -688,7 +688,7 @@ class DirectmediaDecompressor:
 
                             if len(clean_text) >= min_length:
                                 text_blocks.append({"offset": start, "length": sequence_length, "text": clean_text})
-                    except:
+                    except Exception:
                         pass
             else:
                 i += 1

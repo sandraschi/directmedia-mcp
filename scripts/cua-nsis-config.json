@@ -1,0 +1,14 @@
+{
+    "product_name": "Directmedia MCP",
+    "install_dir": "%LOCALAPPDATA%\\Directmedia MCP",
+    "operator_exe": "directmedia-mcp-native.exe",
+    "backend_process_names": ["directmedia-mcp-native", "directmedia-mcp-backend"],
+    "backend_port": 10700,
+    "health_path": "/api/v1/health",
+    "diagnostics_path": "/api/v1/diagnostics",
+    "feature_smoke_path": "/api/v1/system/info",
+    "window_title_re": "Directmedia MCP",
+    "nsis_glob": "native/target/release/bundle/nsis/Directmedia MCP_*_x64-setup.exe",
+    "bridge_ok_text": "REST bridge reachable",
+    "uninstall_registry_filter": "*Directmedia MCP*"
+}
