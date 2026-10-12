@@ -3,15 +3,30 @@ Directmedia Library - Access to Directmedia Publishing Digitale Bibliothek
 """
 
 import os
-import struct
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .dki_text import DkiFormatError, TextDki, find_text_dki
+from .dki_tree import load_toc
 from .logging_config import get_logger
 
 logger = get_logger("directmedia_mcp.library")
+
+_CAPTION_PREFIX = re.compile(r"^(DB\s+)?Digitale Bibliothek(\s+(Band|Sonderband|Spezial))?\s*\d*\s*:\s*", re.IGNORECASE)
+
+
+def _fix_cyrillic(text: str) -> str:
+    """DIGIBIB.TXT is read as Latin-1; Russian volumes (e.g. DB006) are really CP1251."""
+    high = sum(1 for ch in text if "À" <= ch <= "ÿ")
+    letters = sum(1 for ch in text if ch.isalpha())
+    if letters and high / letters > 0.5:
+        try:
+            return text.encode("latin-1").decode("cp1251")
+        except UnicodeError:
+            return text
+    return text
 
 
 @dataclass
@@ -86,12 +101,17 @@ class DirectmediaLibrary:
                 with open(digibib_path, encoding="latin-1") as f:
                     content = f.read()
                     for line in content.split("\n"):
-                        if line.startswith("Caption="):
+                        if line.startswith("Caption=") and title == f"Band {volume_id}":  # first section only
                             title = line.split("=", 1)[1].strip()
-                        elif line.startswith("ShortTitle="):
+                        elif line.startswith("ShortTitle=") and short_title == volume_id:
                             short_title = line.split("=", 1)[1].strip()
             except Exception as e:
                 logger.warning(f"Error reading DIGIBIB.TXT for {volume_id}: {e}")
+
+        title = _fix_cyrillic(title)
+        if short_title == volume_id:
+            # Most later volumes have no ShortTitle: derive it from "Digitale Bibliothek Band 19: <title>".
+            short_title = _CAPTION_PREFIX.sub("", title).strip() or volume_id
 
         # Calculate size and check for content types
         total_size = 0
@@ -255,91 +275,26 @@ class DirectmediaLibrary:
                     logger.warning("Skipping undecodable record %s/%d: %s", volume_id, k, exc)
         return "\n\n".join(parts)
 
-    def get_navigation_tree(self, volume_id: str) -> dict[str, Any]:
-        """Get navigation tree (table of contents) for a volume"""
-
-        volume = self.get_volume_info(volume_id)
-        if not volume:
+    def get_navigation_tree(self, volume_id: str, parent: int | None = None) -> dict[str, Any]:
+        """Table of contents: children of TOC entry `parent` (None = top level), each with its start record."""
+        volume_dir = self.library_path / volume_id
+        if not volume_dir.is_dir():
             return {"error": f"Volume {volume_id} not found"}
-
-        tree_dki_path = self.library_path / volume_id / "Data" / "TREE.DKI"
-
-        tree_info = {"volume_id": volume_id, "tree_files": {}, "structure": "unknown", "table_of_contents": []}
-
-        # Parse TREE.DKI for table of contents
-        if tree_dki_path.exists():
-            try:
-                toc_entries = self._parse_tree_dki(tree_dki_path)
-                tree_info["structure"] = "hierarchical_text"
-                tree_info["table_of_contents"] = toc_entries
-                tree_info["tree_files"]["TREE.DKI"] = {
-                    "size": tree_dki_path.stat().st_size,
-                    "entries": len(toc_entries),
-                }
-            except Exception as e:
-                logger.warning(f"Error parsing TREE.DKI: {e}")
-                tree_info["error"] = str(e)
-
-        # Analyze TREE.DKA (structural information)
-        tree_dka_path = self.library_path / volume_id / "Data" / "TREE.DKA"
-        if tree_dka_path.exists():
-            try:
-                with open(tree_dka_path, "rb") as f:
-                    header = f.read(64)
-                    if len(header) >= 8:
-                        num_entries = struct.unpack("<I", header[:4])[0]
-                        data_offset = struct.unpack("<I", header[4:8])[0]
-                        tree_info["tree_files"]["TREE.DKA"] = {
-                            "size": tree_dka_path.stat().st_size,
-                            "num_entries": num_entries,
-                            "data_offset": data_offset,
-                        }
-            except Exception as e:
-                logger.warning(f"Error analyzing TREE.DKA: {e}")
-
-        return tree_info
-
-    def _parse_tree_dki(self, tree_dki_path: Path) -> list[dict[str, Any]]:
-        """Parse TREE.DKI file to extract hierarchical table of contents"""
-
-        with open(tree_dki_path, "rb") as f:
-            data = f.read()
-
-        toc_entries = []
-        current_line = []
-        i = 0
-
-        while i < len(data):
-            if data[i] == 0x0D and i + 1 < len(data) and data[i + 1] == 0x0A:  # CRLF
-                # End of line
-                if current_line:
-                    line_bytes = bytes(current_line)
-                    try:
-                        line_text = line_bytes.decode("latin-1", errors="replace").rstrip()
-                        if line_text.strip():  # Skip empty lines
-                            # Calculate indentation level (number of leading spaces)
-                            indent_level = len(line_text) - len(line_text.lstrip(" "))
-                            clean_text = line_text.strip()
-
-                            toc_entries.append(
-                                {
-                                    "text": clean_text,
-                                    "level": indent_level // 2,  # Each level uses 2 spaces
-                                    "offset": len(toc_entries),  # Sequential index
-                                }
-                            )
-                    except UnicodeDecodeError:
-                        pass
-                    current_line = []
-                i += 2
-            elif data[i] >= 32 and data[i] <= 255:  # Printable character
-                current_line.append(data[i])
-                i += 1
-            else:
-                # Skip control characters
-                i += 1
-
-        return toc_entries
+        entries = load_toc(volume_dir)
+        if not entries:
+            return {"error": f"Volume {volume_id} has no TREE.DKI"}
+        if parent is not None and not 0 <= parent < len(entries):
+            return {"error": f"TOC entry {parent} out of range 0..{len(entries) - 1}"}
+        children = [e for e in entries if e.parent == parent]
+        return {
+            "volume_id": volume_id,
+            "total_entries": len(entries),
+            "has_record_map": entries[0].record is not None,
+            "parent": parent,
+            "entries": [
+                {"index": e.index, "title": e.title, "record": e.record, "child_count": e.child_count} for e in children
+            ],
+        }
 
     def analyze_volume_structure(self, volume_id: str) -> dict[str, Any]:
         """Analyze the file structure of a volume"""

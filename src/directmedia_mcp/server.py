@@ -5,6 +5,8 @@ Directmedia MCP Server - Access to Directmedia Publishing Digitale Bibliothek
 
 import json
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated, Any, Literal
 
 import httpx
@@ -14,6 +16,7 @@ from fastmcp import FastMCP
 from fastmcp.server import create_proxy
 from pydantic import BaseModel, Field
 
+from . import reader_api
 from .epub_converter import batch_convert_library, convert_volume_to_epub
 from .library import DirectmediaLibrary
 from .logging_config import get_logger
@@ -220,18 +223,22 @@ async def get_text_content(volume_id: str, start_pos: int = 0, length: int = 100
 
 
 @mcp.tool()
-async def get_navigation_tree(volume_id: str) -> dict[str, Any]:
+async def get_navigation_tree(volume_id: str, parent: int | None = None) -> dict[str, Any]:
     """
-    Get the navigation tree/structure for a volume
+    Table of contents of a volume, one level at a time.
+
+    Each entry has a start `record` usable as get_text_content(start_pos=record), and
+    `child_count`; pass an entry's `index` as `parent` to list its children.
 
     Args:
         volume_id: Volume ID to get navigation for
+        parent: TOC entry index whose children to list; omit for the top level
     """
     if library is None:
         return {"error": "Library not initialized. Use set_library_path first."}
 
     try:
-        tree = library.get_navigation_tree(volume_id)
+        tree = library.get_navigation_tree(volume_id, parent)
         return tree
     except Exception as e:
         logger.error(f"Error getting navigation tree for {volume_id}: {e}")
@@ -454,7 +461,17 @@ async def textgrid(
 
 
 _mcp_http = mcp.http_app(path="/")
-app = FastAPI(title="Directmedia MCP API", version="0.1.0", lifespan=_mcp_http.lifespan)
+
+
+@asynccontextmanager
+async def _lifespan(app_: FastAPI) -> AsyncIterator[None]:
+    # FastAPI ignores @app.on_event handlers once a lifespan is set, so startup work lives here.
+    async with _mcp_http.lifespan(app_):
+        await startup_init_library()
+        yield
+
+
+app = FastAPI(title="Directmedia MCP API", version="0.1.0", lifespan=_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -547,7 +564,6 @@ async def api_call_tool(request: dict[str, Any]) -> Any:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@app.on_event("startup")
 async def startup_init_library() -> None:
     """Optionally initialize library from DIRECTMEDIA_LIBRARY_PATH on boot."""
     env_path = os.getenv("DIRECTMEDIA_LIBRARY_PATH", "").strip()
@@ -564,6 +580,8 @@ async def startup_init_library() -> None:
         logger.warning("Could not auto-initialize library: %s", exc)
 
 
+reader_api.set_library_provider(lambda: library)
+app.include_router(reader_api.router)
 app.mount("/mcp", _mcp_http)
 
 

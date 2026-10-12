@@ -9,8 +9,9 @@
 
 > **Status (2026-10-12): `TEXT.DKI` decoded.** Book text is extracted from 72 of 73 text volumes; 2,281,483 of
 > 2,281,484 records pass the full-library gate, and spot checks against TextGrid's independent transcription match at
-> 98%. Still open: the table-of-contents tree (`TREE.DKI`), the Russian volume DB006's character mapping, and the
-> `INDEX.*` search files.
+> 98%. Tables of contents link to pages in 72 volumes, and the webapp is a working alternative Digibib reader
+> (library, contents, paged reading, ranked full-text search). Still open: the TOC page map of the two largest volumes
+> (DB050, DB125), the Russian volume DB006's character mapping, and the original `INDEX.*` search files.
 
 > 📖 **[Installation Guide](INSTALL.md)** — quick start, manual setup, and troubleshooting
 
@@ -30,7 +31,7 @@ converted to TEI XML (see [Public-domain texts without the CDs](#public-domain-t
 | Area | State |
 |------|-------|
 | Volume discovery (`list_volumes`, `get_volume_info`) | Works on a local library folder |
-| `TREE.DKI` (table of contents) | Partial — on some volumes it is plain CP1252 text and reads fine |
+| `TREE.DKI` / `TREE.DKA` (table of contents) | Decoded: titles for all volumes, page links for 72 (not DB050/DB125) |
 | `TEXT.DKI` (book body text) | **Decoded** ([format spec](docs/DKI_FORMAT.md)); 72/73 volumes, DB006 (Russian) needs a font map |
 | `get_text_content` | Real text, paged by record (about one printed page), with print page numbers and source file |
 | `search_text` | Real text, but a linear scan; slow across the biggest volumes |
@@ -77,7 +78,7 @@ The `textgrid` tool searches, reads and exports these editions without the CDs.
 | `list_volumes()` | Enumerate volumes (DBxxx, DBSKxx, DBSOxx) |
 | `get_volume_info(volume_id)` | Volume metadata and file inventory |
 | `analyze_volume_structure(volume_id)` | File-format overview of a volume |
-| `get_navigation_tree(volume_id)` | TOC from `TREE.DKI` (partial) |
+| `get_navigation_tree(volume_id, parent)` | Table of contents one level at a time; each entry has its start `record` |
 | `search_text(query, volume_id, limit)` | Substring search over decoded text; `position` = record index |
 | `get_text_content(volume_id, start_pos, length)` | Decoded text from record `start_pos`; page on with `next_pos` |
 | `convert_volume_to_epub_file(volume_id, output_dir)` | One EPUB per volume from decoded text |
@@ -116,7 +117,7 @@ uv run directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale
 | File | Role | Decoded? |
 |------|------|----------|
 | `TEXT.DKI` | Book body text | No |
-| `TREE.DKI` / `TREE.DKA` | Table of contents | Partly |
+| `TREE.DKI` / `TREE.DKA` | Table of contents (titles / page map) | Yes, except the large-tree map layout |
 | `INDEX.HTX/PLX/SHX/SWX/TTX/WLX` | Search indices | No |
 | `LINKS.*` | Cross-references | No |
 | `SIGEL.DAT` | Abbreviation registry | No |
@@ -124,7 +125,19 @@ uv run directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale
 
 ## Webapp
 
-Dashboard in `web_sota/`: frontend on port **10826**, backend API on **10827**. Start with `web_sota\start.ps1`.
+An alternative Digibib reader in `web_sota/`: frontend on port **10826**, backend API on **10827**. Start with
+`web_sota\start.ps1` (set `DIRECTMEDIA_LIBRARY_PATH`, or the library path in Settings).
+
+- **Library**: all volumes, with search, filter, sort and pagination.
+- **Volume**: contents tree (expand lazily, click to read), search-index build with progress, EPUB export.
+- **Reader** (`/read/<volume>/<page>`): one printed page at a time, with a breadcrumb showing where you are in the
+  work, page jump, ← → keys, print-edition page numbers, highlighted search terms and adjustable font size.
+- **Search**: ranked full-text search (SQLite FTS5) over indexed volumes, with highlighted snippets that link into
+  the reader. Words combine with AND, `"quotes"` make a phrase, `word*` matches a prefix. Each volume is indexed once
+  on demand (Lessing about 2 s, Philosophie about 25 s) into `%LOCALAPPDATA%\directmedia-mcp\index`, or
+  `DIRECTMEDIA_INDEX_DIR`.
+
+REST API for the reader: `/api/v1/reader/{volumes, volumes/<id>/toc, volumes/<id>/records/<n>, search, index}`.
 
 ## Legal
 
