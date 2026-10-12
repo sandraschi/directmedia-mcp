@@ -1,158 +1,277 @@
-import { useState, useRef, useEffect } from "react";
-import { API_BASE } from "../lib/api";
+import {
+  BookOpen,
+  Download,
+  Library,
+  MessageSquare,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  type ChatSource,
+  type LlmProvider,
+  llmChat,
+  llmProviders,
+} from "@/lib/api";
 
 interface Message {
+  id: string;
   role: "user" | "assistant";
   content: string;
+  sources?: ChatSource[];
+  note?: string | null;
 }
 
+const newMessage = (m: Omit<Message, "id">): Message => ({
+  ...m,
+  id: crypto.randomUUID(),
+});
+
 const PERSONALITIES = [
-  { id: "helpful", label: "Helpful", prompt: "You are a helpful assistant." },
-  { id: "expert", label: "Expert", prompt: "You are an expert technical assistant. Provide detailed, precise answers." },
-  { id: "concise", label: "Concise", prompt: "You are a concise assistant. Give brief, to-the-point answers." },
+  { id: "librarian", label: "Librarian", prompt: "" },
+  {
+    id: "scholar",
+    label: "Scholar",
+    prompt: "Answer like a literary scholar: precise, with context and dates.",
+  },
+  {
+    id: "concise",
+    label: "Concise",
+    prompt: "Answer briefly, in two or three sentences.",
+  },
 ];
 
-const EXAMPLES = ["What can you do?", "Show me the current status", "Help me understand this system"];
+const EXAMPLES = [
+  "Welches Goethe-Buch handelt von unglücklicher Liebe?",
+  "Wer war Kalif Vathek?",
+  "Was sagt Lessing über Toleranz?",
+];
+
+const STORE = {
+  chat: "fc_chat",
+  model: "llm_model",
+  personality: "fc_personality",
+  library: "fc_use_library",
+};
+
+function load(key: string, fallback: string): string {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function save(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // storage unavailable: chat still works for this session
+  }
+}
 
 export default function FloatingChat() {
   const [open, setOpen] = useState(false);
-  const [chat, setChat] = useState<Message[]>([]);
+  const [chat, setChat] = useState<Message[]>(() => {
+    try {
+      const saved = JSON.parse(load(STORE.chat, "[]")) as Omit<Message, "id">[];
+      return saved.map(newMessage);
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [provider] = useState(() => localStorage.getItem("llm_provider") || "ollama");
-  const [model, setModel] = useState(() => localStorage.getItem("llm_model") || "");
-  const [modelList, setModelList] = useState<string[]>([]);
-  const [skillName, setSkillName] = useState("");
-  const [personality, setPersonality] = useState(() => localStorage.getItem("fc_personality") || "helpful");
+  const [providers, setProviders] = useState<LlmProvider[] | null>(null);
+  const [model, setModel] = useState(() => load(STORE.model, ""));
+  const [personality, setPersonality] = useState(() =>
+    load(STORE.personality, "librarian"),
+  );
+  const [useLibrary, setUseLibrary] = useState(
+    () => load(STORE.library, "1") === "1",
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("fc_chat");
-      if (saved) setChat(JSON.parse(saved));
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    if (chat.length > 0) {
-      const trimmed = chat.length > 100 ? chat.slice(-100) : chat;
-      localStorage.setItem("fc_chat", JSON.stringify(trimmed));
-    } else {
-      localStorage.removeItem("fc_chat");
-    }
+    save(STORE.chat, chat.length ? JSON.stringify(chat.slice(-100)) : null);
   }, [chat]);
 
   useEffect(() => {
-    fetch(API_BASE + "/api/llm/providers")
-      .then((r) => r.json())
-      .then((d) => {
-        const providers = d.providers || d;
-        const list: string[] = [];
-        if (Array.isArray(providers)) {
-          for (const p of providers) {
-            if (p.models) list.push(...p.models);
-          }
-        }
-        setModelList(list);
-        if (!model && list.length > 0) {
-          setModel(list[0]);
-          localStorage.setItem("llm_model", list[0]);
+    if (!open || providers) return;
+    llmProviders()
+      .then((list) => {
+        setProviders(list);
+        const options = list.flatMap((p) =>
+          p.models.map((m) => `${p.name}::${m}`),
+        );
+        if (options.length && !options.includes(model)) {
+          setModel(options[0]);
+          save(STORE.model, options[0]);
         }
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => setProviders([]));
+  }, [open, providers, model]);
 
   useEffect(() => {
-    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat, open]);
+    if (open && chat.length >= 0)
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat.length, open]);
 
-  useEffect(() => {
-    fetch(API_BASE + "/api/skills")
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d) && d.length > 0) setSkillName(d[0].name || String(d[0]));
-      })
-      .catch(() => {});
-  }, []);
+  const available =
+    providers?.filter((p) => p.available && p.models.length) ?? [];
 
-  const sendMessage = async (text: string) => {
-    setChat((prev) => [...prev, { role: "user", content: text }]);
+  async function sendMessage(text: string) {
+    const [provider, ...rest] = model.split("::");
+    const modelId = rest.join("::");
+    const history = chat.map(({ role, content }) => ({ role, content }));
+    setChat((prev) => [...prev, newMessage({ role: "user", content: text })]);
     setLoading(true);
     try {
-      const sp = PERSONALITIES.find((p) => p.id === personality);
-      const r = await fetch(API_BASE + "/api/llm/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, model, prompt: text, system: sp?.prompt }),
+      const reply = await llmChat({
+        provider,
+        model: modelId,
+        prompt: text,
+        system:
+          PERSONALITIES.find((p) => p.id === personality)?.prompt || undefined,
+        history,
+        use_library: useLibrary,
       });
-      const data = await r.json();
-      setChat((prev) => [...prev, { role: "assistant", content: data.response || data.error || "No response" }]);
-    } catch {
-      setChat((prev) => [...prev, { role: "assistant", content: "Request failed. Is the backend running?" }]);
+      setChat((prev) => [
+        ...prev,
+        newMessage({
+          role: "assistant",
+          content: reply.response || "(empty answer)",
+          sources: reply.sources,
+          note: reply.note,
+        }),
+      ]);
+    } catch (e) {
+      setChat((prev) => [
+        ...prev,
+        newMessage({
+          role: "assistant",
+          content:
+            e instanceof Error
+              ? e.message
+              : "Request failed. Is the backend running?",
+        }),
+      ]);
     }
     setLoading(false);
-  };
+  }
 
-  const handleSend = () => {
-    if (!input.trim()) return;
+  function handleSend() {
+    if (!input.trim() || !model || loading) return;
     sendMessage(input.trim());
     setInput("");
-  };
+  }
 
-  const handleExport = () => {
-    if (chat.length === 0) return;
-    const lines = chat.map((m) => `[${m.role.toUpperCase()}] ${m.content}`);
-    const blob = new Blob([lines.join("\n\n")], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
+  function handleExport() {
+    if (!chat.length) return;
+    const lines = chat.map((m) => {
+      const refs = m.sources
+        ?.map(
+          (s) => `  [${s.n}] ${s.volume_id} ${s.work} (page ${s.record + 1})`,
+        )
+        .join("\n");
+      return `[${m.role.toUpperCase()}] ${m.content}${refs ? `\n${refs}` : ""}`;
+    });
+    const url = URL.createObjectURL(
+      new Blob([lines.join("\n\n")], { type: "text/plain" }),
+    );
     const a = document.createElement("a");
-    a.href = url; a.download = "chat-export.txt"; a.click();
+    a.href = url;
+    a.download = "digibib-chat.txt";
+    a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const handleClear = () => {
-    setChat([]);
-    localStorage.removeItem("fc_chat");
-  };
+  }
 
   return (
-    <div className="fixed bottom-5 right-5 z-50" data-testid="floating-chat">
+    // bottom-24 keeps the button clear of the reader's bottom page navigation
+    <div className="fixed bottom-24 right-5 z-50" data-testid="floating-chat">
       {open ? (
-        <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-[380px] h-[520px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-slate-200">Chat</span>
-              {skillName && <span className="text-[10px] bg-cyan-900 text-cyan-300 px-1.5 py-0.5 rounded-full">{skillName}</span>}
-            </div>
+        <div className="flex h-[560px] max-h-[calc(100vh-8rem)] w-[400px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-700 px-3 py-2">
+            <span className="text-sm font-semibold text-slate-200">
+              Ask the library
+            </span>
             <div className="flex items-center gap-1.5">
               <select
-                className="bg-slate-800 border border-slate-600 rounded text-[10px] px-1.5 py-1 text-slate-300 max-w-[80px]"
+                className="max-w-[90px] rounded border border-slate-600 bg-slate-800 px-1.5 py-1 text-[11px] text-slate-300"
                 value={personality}
-                onChange={(e) => { setPersonality(e.target.value); localStorage.setItem("fc_personality", e.target.value); }}
+                onChange={(e) => {
+                  setPersonality(e.target.value);
+                  save(STORE.personality, e.target.value);
+                }}
+                aria-label="Answer style"
               >
-                {PERSONALITIES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                {PERSONALITIES.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
               </select>
-              {modelList.length > 0 && (
+              {available.length > 0 && (
                 <select
-                  className="bg-slate-800 border border-slate-600 rounded text-xs px-2 py-1 text-slate-300 max-w-[140px]"
+                  className="max-w-[150px] rounded border border-slate-600 bg-slate-800 px-1.5 py-1 text-[11px] text-slate-300"
                   value={model}
-                  onChange={(e) => { setModel(e.target.value); localStorage.setItem("llm_model", e.target.value); }}
+                  onChange={(e) => {
+                    setModel(e.target.value);
+                    save(STORE.model, e.target.value);
+                  }}
+                  aria-label="Model"
+                  data-testid="floating-chat-model"
                 >
-                  {modelList.map((m) => <option key={m} value={m}>{m.split(":")[0]}</option>)}
+                  {available.map((p) => (
+                    <optgroup key={p.name} label={p.name}>
+                      {p.models.map((m) => (
+                        <option
+                          key={`${p.name}::${m}`}
+                          value={`${p.name}::${m}`}
+                        >
+                          {m}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               )}
-              <button onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-300 text-lg leading-none">&times;</button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="text-slate-500 hover:text-slate-300"
+                aria-label="Close chat"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 text-sm">
+
+          <div className="flex-1 space-y-2 overflow-y-auto p-3 text-sm">
+            {providers && available.length === 0 && (
+              <p className="rounded-md border border-amber-900/50 bg-amber-950/30 p-2 text-xs text-amber-200">
+                No local LLM found. Start LM Studio (port 1234) or Ollama (port
+                11434), then reopen the chat.
+              </p>
+            )}
             {chat.length === 0 && (
-              <div className="text-center pt-4">
-                <p className="text-slate-500 text-xs mb-3">Ask a question.</p>
-                <div className="flex flex-wrap justify-center gap-1.5" data-testid="example-prompts">
+              <div className="pt-4 text-center">
+                <p className="mb-3 text-xs text-slate-500">
+                  Questions are answered from passages of your indexed volumes
+                  (semantic index), with sources.
+                </p>
+                <div
+                  className="flex flex-wrap justify-center gap-1.5"
+                  data-testid="example-prompts"
+                >
                   {EXAMPLES.map((ex) => (
                     <button
+                      type="button"
                       key={ex}
-                      onClick={() => { setInput(ex); }}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-[10px] px-2 py-1 rounded-full border border-slate-700 transition-colors"
+                      onClick={() => setInput(ex)}
+                      className="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
                     >
                       {ex}
                     </button>
@@ -160,67 +279,121 @@ export default function FloatingChat() {
                 </div>
               </div>
             )}
-            {chat.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] rounded-xl px-3 py-2 whitespace-pre-wrap ${
-                  msg.role === "user" ? "bg-cyan-800 text-cyan-100" : "bg-slate-800 text-slate-300"
-                }`}>
+            {chat.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[88%] whitespace-pre-wrap rounded-xl px-3 py-2 ${
+                    msg.role === "user"
+                      ? "bg-amber-800/80 text-amber-50"
+                      : "bg-slate-800 text-slate-200"
+                  }`}
+                >
                   {msg.content}
+                  {msg.note && (
+                    <p className="mt-2 text-[11px] text-amber-300">
+                      {msg.note}
+                    </p>
+                  )}
+                  {msg.sources && msg.sources.length > 0 && (
+                    <ol className="mt-2 space-y-1 border-t border-slate-700 pt-2 text-[11px]">
+                      {msg.sources.map((s) => (
+                        <li key={s.n}>
+                          <Link
+                            to={`/read/${s.volume_id}/${s.record}`}
+                            className="flex gap-1 text-slate-400 hover:text-amber-300"
+                            title={s.snippet}
+                          >
+                            <span className="text-amber-400">[{s.n}]</span>
+                            <BookOpen className="mt-0.5 h-3 w-3 shrink-0" />
+                            <span>
+                              {s.volume_id} {s.work || "page"} · p.{" "}
+                              {s.record + 1}
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                 </div>
               </div>
             ))}
-            {loading && <div className="text-slate-500 text-xs animate-pulse">Thinking...</div>}
+            {loading && (
+              <div className="animate-pulse text-xs text-slate-500">
+                Searching the library and thinking…
+              </div>
+            )}
             <div ref={bottomRef} />
           </div>
-          <div className="border-t border-slate-700 p-3 flex flex-col gap-2">
+
+          <div className="flex flex-col gap-2 border-t border-slate-700 p-3">
             <div className="flex gap-2">
               <input
-                className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
-                placeholder="Ask something..."
+                className="flex-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:border-amber-500 focus:outline-none"
+                placeholder="Ask about your books…"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSend()}
                 data-testid="floating-chat-input"
               />
               <button
+                type="button"
                 onClick={handleSend}
-                disabled={loading || !input.trim()}
-                className="bg-cyan-700 hover:bg-cyan-600 disabled:bg-slate-700 text-white px-3 py-2 rounded-lg text-sm font-medium"
+                disabled={loading || !input.trim() || !model}
+                className="rounded-lg bg-amber-700 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:bg-slate-700"
                 data-testid="floating-chat-send"
               >
-                Go
+                Ask
               </button>
             </div>
-            <div className="flex justify-end gap-1.5">
-              <button
-                onClick={handleExport}
-                disabled={chat.length === 0}
-                className="text-slate-500 hover:text-slate-300 disabled:text-slate-700 text-xs px-1.5 py-1 rounded"
-                title="Export chat"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              </button>
-              <button
-                onClick={handleClear}
-                disabled={chat.length === 0}
-                className="text-slate-500 hover:text-slate-300 disabled:text-slate-700 text-xs px-1.5 py-1 rounded"
-                title="Clear chat"
-                data-testid="floating-chat-clear"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-              </button>
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={useLibrary}
+                  onChange={(e) => {
+                    setUseLibrary(e.target.checked);
+                    save(STORE.library, e.target.checked ? "1" : "0");
+                  }}
+                  data-testid="floating-chat-library"
+                />
+                <Library className="h-3 w-3" /> Answer from my library
+              </label>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={!chat.length}
+                  className="rounded p-1 text-slate-500 hover:text-slate-300 disabled:text-slate-700"
+                  title="Export chat"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChat([])}
+                  disabled={!chat.length}
+                  className="rounded p-1 text-slate-500 hover:text-slate-300 disabled:text-slate-700"
+                  title="Clear chat"
+                  data-testid="floating-chat-clear"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
       ) : (
         <button
+          type="button"
           onClick={() => setOpen(true)}
-          className="h-12 w-12 rounded-full bg-cyan-700 hover:bg-cyan-600 shadow-xl flex items-center justify-center text-white text-xl transition-colors"
-          title="Open chat"
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-700 text-white shadow-xl transition-colors hover:bg-amber-600"
+          title="Ask the library"
+          data-testid="floating-chat-open"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
+          <MessageSquare className="h-5 w-5" />
         </button>
       )}
     </div>

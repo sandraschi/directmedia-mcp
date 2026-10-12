@@ -5,6 +5,7 @@ import {
   Database,
   Download,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -19,6 +20,9 @@ import {
   readerIndexStatus,
   readerToc,
   readerVolumes,
+  type SemanticStatus,
+  semanticBuild,
+  semanticStatus,
   type TocEntry,
 } from "@/lib/api";
 import { IndexBadge } from "@/pages/volumes";
@@ -90,6 +94,73 @@ function TocNode({ volumeId, entry }: { volumeId: string; entry: TocEntry }) {
         </ul>
       )}
     </li>
+  );
+}
+
+function SemanticIndexControl({ volumeId }: { volumeId: string }) {
+  const [st, setSt] = useState<SemanticStatus | null>(null);
+
+  const refresh = useCallback(async () => {
+    const all = await semanticStatus();
+    setSt(all.find((s) => s.volume_id === volumeId) ?? null);
+  }, [volumeId]);
+
+  useEffect(() => {
+    refresh().catch(() => undefined);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (st?.state !== "building" && st?.state !== "queued") return;
+    const timer = window.setInterval(() => {
+      refresh().catch(() => undefined);
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [st?.state, refresh]);
+
+  if (st?.state === "queued") {
+    return (
+      <span className="text-sm text-amber-300">Semantic index queued…</span>
+    );
+  }
+  if (st?.state === "building") {
+    const pct = st.total ? Math.round((100 * st.done) / st.total) : 0;
+    return (
+      <span
+        className="flex items-center gap-2 text-sm text-amber-300"
+        data-testid="volume-semantic-progress"
+      >
+        <Loader2 className="h-4 w-4 animate-spin" /> Embedding… {pct}% (
+        {st.chunks.toLocaleString("de-DE")} passages)
+      </span>
+    );
+  }
+  if (st?.state === "ready") {
+    return (
+      <span className="flex items-center gap-1 text-sm text-emerald-300">
+        <Sparkles className="h-4 w-4" /> semantic (
+        {st.chunks.toLocaleString("de-DE")} passages)
+      </span>
+    );
+  }
+  return (
+    <>
+      <Button
+        variant="outline"
+        className="border-slate-700"
+        onClick={() =>
+          semanticBuild(volumeId)
+            .then(setSt)
+            .catch(() => undefined)
+        }
+        data-testid="volume-semantic"
+      >
+        <Sparkles className="mr-2 h-4 w-4" />
+        {st?.state === "stale" ? "Rebuild" : "Build"} semantic index
+      </Button>
+      {st?.state === "error" && (
+        <span className="text-sm text-red-400">{st.error}</span>
+      )}
+    </>
   );
 }
 
@@ -218,6 +289,7 @@ export function VolumeDetail() {
           {index?.state === "error" && (
             <span className="text-sm text-red-400">{index.error}</span>
           )}
+          <SemanticIndexControl volumeId={volumeId} />
           <Button
             variant="outline"
             className="border-slate-700"

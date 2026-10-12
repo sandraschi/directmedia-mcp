@@ -358,3 +358,121 @@ export function splitMatches(text: string, re: RegExp): TextPart[] {
     text.split(re).map((t, i) => ({ text: t, hit: i % 2 === 1 })),
   );
 }
+
+// ---- Semantic search (LanceDB) ----
+
+export type SemanticState =
+  | "missing"
+  | "queued"
+  | "building"
+  | "ready"
+  | "stale"
+  | "error";
+
+export interface SemanticStatus {
+  volume_id: string;
+  state: SemanticState;
+  done: number;
+  total: number;
+  chunks: number;
+  model: string;
+  error: string | null;
+}
+
+export interface SemanticHit {
+  volume_id: string;
+  record: number;
+  work: string;
+  text: string;
+  score: number;
+}
+
+export interface SemanticWork {
+  volume_id: string;
+  work: string;
+  record: number;
+  score: number;
+  hits: number;
+}
+
+export interface SemanticResult {
+  query: string;
+  hits: SemanticHit[];
+  works: SemanticWork[];
+  not_indexed: string[];
+  model: string;
+}
+
+export function semanticStatus() {
+  return readerGet<SemanticStatus[]>("/semantic/index");
+}
+
+export async function semanticBuild(volumeId: string): Promise<SemanticStatus> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/reader/semantic/index/${encodeURIComponent(volumeId)}`,
+    { method: "POST" },
+  );
+  if (!res.ok) throw new Error(`Semantic index failed to start: ${res.status}`);
+  return res.json();
+}
+
+export function semanticSearch(q: string, volumes: string[] = [], limit = 20) {
+  return readerGet<SemanticResult>("/semantic/search", {
+    q,
+    volumes: volumes.length ? volumes.join(",") : undefined,
+    limit,
+  });
+}
+
+// ---- Library chat (local LLM) ----
+
+export interface LlmProvider {
+  name: string;
+  url: string;
+  available: boolean;
+  models: string[];
+}
+
+export interface ChatSource {
+  n: number;
+  volume_id: string;
+  record: number;
+  work: string;
+  score: number;
+  snippet: string;
+}
+
+export interface ChatReply {
+  response: string;
+  provider: string;
+  model: string;
+  sources: ChatSource[];
+  note: string | null;
+}
+
+export async function llmProviders(): Promise<LlmProvider[]> {
+  const res = await fetch(`${API_BASE}/api/llm/providers`);
+  if (!res.ok) throw new Error(`Provider probe failed: ${res.status}`);
+  return (await res.json()).providers;
+}
+
+export async function llmChat(body: {
+  provider: string;
+  model: string;
+  prompt: string;
+  system?: string;
+  history: { role: "user" | "assistant"; content: string }[];
+  use_library: boolean;
+}): Promise<ChatReply> {
+  const res = await fetch(`${API_BASE}/api/llm/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok)
+    throw new Error(
+      (data as { detail?: string }).detail ?? `Chat failed: ${res.status}`,
+    );
+  return data as ChatReply;
+}
