@@ -1,4 +1,4 @@
-# Directmedia MCP 
+# Directmedia MCP
 
 <p align="center">
   <a href="https://github.com/casey/just"><img src="https://img.shields.io/badge/just-ready_to_go-7c5cfc?style=flat-square&logo=just&logoColor=white" alt="Just"></a>
@@ -7,104 +7,102 @@
   <a href="https://github.com/PrefectHQ/fastmcp"><img src="https://img.shields.io/badge/FastMCP-3.2-7c5cfc?style=flat-square" alt="FastMCP"></a>
 </p>
 
+> **Status: experimental / mission ongoing.** The Directmedia `TEXT.DKI` body-text format is **not cracked yet**.
+> This server can enumerate volumes and read some metadata, but it **cannot reliably extract book text** from the CDs.
 
 > 📖 **[Installation Guide](INSTALL.md)** — quick start, manual setup, and troubleshooting
 
-**FastMCP 3.1.0+ server for accessing Directmedia Publishing "Digitale Bibliothek" - TEXT EXTRACTION WORKING!**
+FastMCP server aimed at giving agents access to the Directmedia Publishing **"Digitale Bibliothek"** CD-ROM/DVD collection.
 
-## Quick Start
+## What this wraps
+
+The **Digitale Bibliothek** was Directmedia Publishing's German e-book series (1990s-2000s): ~100+ volumes of literature,
+philosophy and reference works, read with the proprietary `Digibib5.exe` reader. Each volume stores its content in
+undocumented binary files (`TEXT.DKI`, `TREE.DKI`, `INDEX.*`, ...).
+
+The public-domain part of the same corpus lives on today as the **zeno.org** online library, which TextGrid licensed and
+converted to TEI XML (see [Public-domain texts without the CDs](#public-domain-texts-without-the-cds)).
+
+## Current state (honest)
+
+| Area | State |
+|------|-------|
+| Volume discovery (`list_volumes`, `get_volume_info`) | Works on a local library folder |
+| `TREE.DKI` (table of contents) | Partial — on some volumes it is plain CP1252 text and reads fine |
+| `TEXT.DKI` (book body text) | **Not decoded.** Header and offset table understood; the packed payload codec is unknown |
+| `search_text`, `get_text_content` | Return heuristic byte scrapes, not faithful text — do not trust the output |
+| EPUB export | Wraps whatever the heuristic produced; not usable as real books yet |
+| `INDEX.*`, `LINKS.*`, images, audio | Not analysed |
+
+An earlier version of this README claimed "TEXT.DKI decompression working" and "101 volumes accessible". **That was
+wrong** — the "structured records, not compressed" theory did not survive contact with real volumes. The loose
+`reverse_engineer_*.py` / `*huffman*.py` scripts in the repo root are from that failed attempt and are kept only for
+reference.
+
+## What we know about TEXT.DKI
+
+The reversing work happens in **[reversing-mcp](https://github.com/sandraschi/reversing-mcp)** (Ghidra + ReVa against
+`Digibib5.exe`). Its running notes are the source of truth:
+`reversing-mcp/docs/status.md` and `reversing-mcp/docs/DIGIBIB_DECOMPILE_PLAN.md`.
+
+Summary of findings so far:
+
+- **Two on-disk families.** DB006-style files start with magic `0x001924CC`, then `0x00000004`, then a dword count;
+  DB002/DB008-style files have a per-volume first dword and `0x00067200` at offset 4, followed by an ascending dword
+  offset table.
+- **Loader identified.** `FUN_00616af0` in `Digibib5.exe` reads the 12-byte header and a `uint32[count]` offset table.
+  Line layout goes through `FUN_00613458` → `FUN_00616dc0` / `FUN_00614bb4`.
+- **Not zlib.** The embedded zlib is only used for PNG decoding; nothing traced connects it to `TEXT.DKI`.
+- **Open:** the payload codec itself, and why no traced loader in this `Digibib5.exe` build accepts the `0x67200`
+  family at all (possibly a different reader build).
+
+Next planned steps: use TextGrid plain text of the same works as **known plaintext** against `TEXT.DKI` records, and do a
+dynamic pass (hook the decoded line buffer in `Digibib5.exe`) instead of more static archaeology.
+
+## Public-domain texts without the CDs
+
+If you only need **public-domain** works, you do not need to crack DKI at all:
+
+- **zeno.org** — the online library derived from the same corpus.
+- **[TextGrid Repository — Digitale Bibliothek](https://textgridrep.org)** — the zeno.org corpus as TEI XML
+  (literature ~690 authors, philosophy ~250 authors, plus smaller collections). Annotated data and metadata are
+  CC-BY 3.0, plain texts are public domain; credit "TextGrid".
+  - Bulk download (texts only, ~390 MB): `https://textgridlab.org/download/digitale-bibliothek/literatur-nur-texte-2.zip`
+  - Per-object export: `https://textgridlab.org/1.0/aggregator/{text|epub}/textgrid:<id>`
+
+Copyrighted CD content (lexika such as Killy, editorial commentary, modern translations) is **not** on TextGrid —
+that is what the DKI reversing is still for.
+
+A TextGrid-backed source for this server is planned, not implemented.
+
+## MCP tools
+
+All tools exist; see the status table above for what their output is worth.
+
+| Tool | Purpose |
+|------|---------|
+| `set_library_path(path)` | Point the server at the local Digitale Bibliothek folder |
+| `list_volumes()` | Enumerate volumes (DBxxx, DBSKxx, DBSOxx) |
+| `get_volume_info(volume_id)` | Volume metadata and file inventory |
+| `analyze_volume_structure(volume_id)` | File-format overview of a volume |
+| `get_navigation_tree(volume_id)` | TOC from `TREE.DKI` (partial) |
+| `search_text(query, volume_id, limit)` | Experimental — heuristic, unreliable |
+| `get_text_content(volume_id, start_pos, length)` | Experimental — heuristic, unreliable |
+| `convert_volume_to_epub_file(volume_id, output_dir)` | Experimental |
+| `batch_convert_to_epub(output_dir, volume_ids)` | Experimental |
+
+## Quick start
 
 ```powershell
 git clone https://github.com/sandraschi/directmedia-mcp
 cd directmedia-mcp
-just
+just              # list recipes
+just bootstrap    # install dependencies
+just serve        # start the MCP server
 ```
 
-This opens an interactive dashboard showing all available commands. Run `just bootstrap` to install dependencies, then `just serve` or `just dev` to start.
+Claude Desktop (`claude_desktop_config.json`):
 
-### Manual Setup
-
-If you don't have `just` installed:
-
-##  Overview
-
-The Directmedia Publishing "Digitale Bibliothek" was a pioneering German electronic book collection from the 1990s, containing extensive German literature and world literature. This MCP server provides programmatic access to these classic digital books.
-
-###  **BREAKTHROUGH: Text Extraction Working!**
-
-**MISSION ACCOMPLISHED**: We successfully reversed the Directmedia TEXT.DKI format!
-
-- **Discovery**: TEXT.DKI files contain **structured binary records**, not compressed data
-- **Decompressor**: Working Python implementation extracts readable German text
-- **Access**: 101 volumes of 1990s literature now programmatically accessible
-- **Preservation**: Digital cultural heritage unlocked for modern use
-
-**What was thought to be "compression" was actually a structured record format with 2-byte length headers!**
-
-###  Collection Status
-- **101 volumes** discovered (DB002-DB161, DBSK01-DBSK05, DBSO01-DBSO28)
-- **~14GB** total content across all volumes
-- **Proprietary binary format** from 1990s German publishing
-- **Latin-1 encoding** with special characters for German texts
-
-###  **Legal Requirement**
-**You must legally purchase the Directmedia CD-ROMs to use this tool. See Legal Notice section below.**
-
-###  Sample Volumes
-| Volume ID | Title | Size | Content Type |
-|-----------|-------|------|--------------|
-| DB002 | Philosophie von Platon bis Nietzsche | 389MB | Philosophy |
-| DB003 | Geschichte der Philosophie | 113MB | Philosophy History |
-| DB004 | Goethe | 360MB | Literature + Audio |
-| DB005 | Lessing | 149MB | Literature |
-| DB007 | Heine | 226MB | Literature |
-| DB009 | Killy Literaturlexikon | 137MB | Reference |
-| DB011 | Marx/Engels | 117MB | Political Philosophy |
-
-###  Collection Analysis
-
-**101 volumes** discovered with **~50GB** total content:
-- **DB002-DB061**: Main literature collection (philosophy, literature, history)
-- **DBSK01-DBSK05**: Schnellkurs (crash courses)
-- **DBSO01-DBSO28**: Sonderausgaben (special editions)
-
-###  File Format Structure
-
-Each volume uses a proprietary binary format:
-
-#### Core Files (Data/):
-- **TEXT.DKI**: Main text database (structured binary records)
-- **TREE.DK***: Navigation tree (table of contents)
-- **INDEX.***: Multiple search indices (HTX, PLX, SHX, SWX, TTX, WLX)
-- **LINKS.***: Hyperlinks and cross-references
-- **SIGEL.DAT**: Abbreviations/signatures registry
-
-#### Media Files:
-- **IMAGES/**: BMP illustrations and diagrams
-- **WAVS/**: Audio files (readings, lectures)
-- **TABLES/**: Specialized content tables
-
-##  Quick Start
-
-### Prerequisites
-- Python 3.11+
-- Access to Directmedia "Digitale Bibliothek" collection
-- FastMCP 3.1.0+
-
-##  Installation
-
-### Prerequisites
-- [uv](https://docs.astral.sh/uv/) installed (RECOMMENDED)
-- Python 3.12+
-
-###  Quick Start
-Run immediately via `uvx`:
-```bash
-uvx directmedia-mcp
-```
-
-###  Claude Desktop Integration
-Add to your `claude_desktop_config.json`:
 ```json
 "mcpServers": {
   "directmedia-mcp": {
@@ -113,217 +111,34 @@ Add to your `claude_desktop_config.json`:
   }
 }
 ```
-### Basic Usage
-```python
-from directmedia_mcp import DirectmediaLibrary
 
-# Initialize library
-lib = DirectmediaLibrary(r"L:\Multimedia Files\Written Word\Digitale Bibliothek")
+Run directly with a library path:
 
-# List all volumes
-volumes = lib.list_volumes()
-print(f"Found {len(volumes)} volumes")
-
-# Search for content
-results = lib.search_text("Nietzsche", "DB002")  # Philosophy volume
-
-# Extract text
-content = lib.get_text_content("DB002", 0, 1000)
+```powershell
+uv run directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Bibliothek"
 ```
 
-### MCP Server Usage
-```bash
-# Start MCP server
-python -m directmedia_mcp.server --library-path "L:\Multimedia Files\Written Word\Digitale Bibliothek"
+## Volume file layout (per volume, `Data\`)
 
-# Or run directly
-directmedia-mcp --library-path "L:\Multimedia Files\Written Word\Digitale Bibliothek"
-```
+| File | Role | Decoded? |
+|------|------|----------|
+| `TEXT.DKI` | Book body text | No |
+| `TREE.DKI` / `TREE.DKA` | Table of contents | Partly |
+| `INDEX.HTX/PLX/SHX/SWX/TTX/WLX` | Search indices | No |
+| `LINKS.*` | Cross-references | No |
+| `SIGEL.DAT` | Abbreviation registry | No |
+| `IMAGES\`, `WAVS\`, `TABLES\` | Media | Standard formats, not wired up |
 
-##  MCP Tools
+## Webapp
 
-### Library Management
-- `set_library_path(path)` - Configure library location
-- `list_volumes()` - List all available volumes
-- `get_volume_info(volume_id)` - Get volume metadata
+Dashboard in `web_sota/`: frontend on port **10826**, backend API on **10827**. Start with `web_sota\start.ps1`.
 
-### Content Access
-- `search_text(query, volume_id, limit)` - Search across volumes
-- `get_text_content(volume_id, start_pos, length)` - Extract text
-- `get_navigation_tree(volume_id)` - Get table of contents
+## Legal
 
-### EPUB Conversion  **NEW**
-- `convert_volume_to_epub_file(volume_id, output_dir)` - Convert single volume to EPUB
-- `batch_convert_to_epub(output_dir, volume_ids)` - Convert multiple volumes to EPUB
+This tool is for **interoperability and preservation** with CD-ROMs you legally own. Directmedia content remains
+under its original copyright; do not redistribute extracted text from copyrighted volumes. Public-domain texts via
+TextGrid are subject to TextGrid's terms (CC-BY 3.0 for annotated data, credit "TextGrid").
 
-### Analysis
-- `analyze_volume_structure(volume_id)` - File format analysis
+## License
 
-##  Volume Overview
-
-| Volume ID | Title | Size | Content Type |
-|-----------|-------|------|--------------|
-| DB002 | Philosophie von Platon bis Nietzsche | 267MB | Philosophy |
-| DB003 | Geschichte der Philosophie | 180MB | Philosophy |
-| DB004 | Goethe | 150MB | Literature + Audio |
-| DB005 | Lessing | 75MB | Literature |
-| ... | ... | ... | ... |
-
-##  Technical Details
-
-### Binary Format Analysis
-
-**TEXT.DKI Structure:**
-- Header: 256 bytes with section offset table
-- Content: Structured binary records (not compressed!)
-- Each record: 2-byte length + 1-byte type + text content
-
-**TREE.DK* Structure:**
-- DKA: Navigation tree with entry counts and offsets
-- DKI: Tree structure data
-
-**INDEX Files:**
-- HTX: Hypertext index for navigation
-- PLX: Plaintext index for full-text search
-- SHX/SWX: Specialized search indices
-- TTX: Title index
-- WLX: Word list index
-
-### Known Limitations
-
-1. **Proprietary Format**: No official documentation available
-2. **Advanced Features**: Some INDEX and TREE.DK* structures still being analyzed
-3. **Encoding**: Primarily Latin-1 with some UTF-8 elements
-4. **Media Content**: Images and audio files not yet processed
-
-### Recent Achievements 
-
-- [x] **TEXT.DKI Decompression**: Successfully reversed structured binary record format
-- [x] **Text Extraction**: Working decompressor extracts readable German text
-- [x] **EPUB Conversion**: Convert volumes to modern e-book format
-- [x] **MCP Integration**: Full programmatic access via FastMCP server
-- [x] **Volume Management**: Complete 101-volume library access
-- [x] **TREE.DKI Navigation**: Table of contents successfully parsed
-
-##  **EPUB Conversion Feature**
-
-Convert extracted Directmedia text content into modern EPUB format for e-book readers!
-
-### **What It Does**
-- **Extracts** readable text from Directmedia `.DKI` files
-- **Formats** content with proper HTML structure and CSS styling
-- **Creates** valid EPUB 3.0 files compatible with all e-book readers
-- **Preserves** German text encoding and special characters
-- **Adds** metadata including title, author, and volume information
-
-### **EPUB Features**
-- **Proper Structure**: Mimetype, container.xml, OPF package, navigation
-- **German Typography**: Optimized for German text with proper quotes and spacing
-- **Responsive Design**: CSS styling that works on all devices
-- **Table of Contents**: Navigation structure for easy browsing
-- **Metadata**: Complete Dublin Core metadata for library management
-
-### **Usage Examples**
-
-**Convert single volume:**
-```bash
-# Via MCP tool
-convert_volume_to_epub_file("DB002", "./epub_output")
-```
-
-**Batch convert multiple volumes:**
-```bash
-# Via MCP tool
-batch_convert_to_epub("./epub_library", ["DB002", "DB003", "DB004"])
-```
-
-### **Output Example**
-```
-epub_output/
- Goethe - Faust.epub          # Volume DB004
- Heine - Buch der Lieder.epub # Volume DB007
- ... (more volumes)
-```
-
-### **EPUB Reader Compatibility**
--  **Calibre** (recommended for library management)
--  **Apple Books** (iOS/macOS)
--  **Google Play Books**
--  **Kindle** (via conversion)
--  **Adobe Digital Editions**
--  **All major e-book readers**
-
-### Future Enhancements
-
-- [ ] Complete INDEX file parsing for full-text search
-- [ ] TREE.DK* advanced structure decoding
-- [ ] Cross-volume search optimization
-- [ ] Image extraction and processing
-- [ ] Audio file handling
-
-##  Contributing
-
-This is a research project to preserve and provide access to classic digital literature. Contributions welcome for:
-
-- Binary format analysis
-- Decompression algorithms
-- Search optimization
-- Documentation improvements
-
-##  **Legal Notice & Copyright**
-
-### **Important: Legal Use Required**
-
-This software tool is designed to work with **legally purchased** copies of Directmedia Publishing's "Digitale Bibliothek" CD-ROM collection. **You must own legitimate copies of the CD-ROMs to use this tool legally.**
-
-#### **Where to Purchase**
-Directmedia Publishing still operates and offers their complete collection:
-
-- **Official Website**: [https://www.directmedia-publishing.de/](https://www.directmedia-publishing.de/)
-- **Product**: "Digitale Bibliothek" (Complete 101-volume collection)
-- **Format**: Available as digital downloads and physical media
-- **Languages**: German literature and philosophy collections
-
-#### **Copyright Notice**
-- **Copyright**:  Directmedia Publishing GmbH
-- **Content**: All text, images, and multimedia content remain copyrighted
-- **Usage**: Personal, educational, and research use permitted with legal copies
-- **Redistribution**: Not permitted without explicit permission
-
-#### **Disclaimer**
-This tool is provided for **educational and research purposes** to access legally obtained digital content. The authors are not responsible for misuse of this software. Ensure you comply with all applicable copyright laws in your jurisdiction.
-
-**Pirated or illegally obtained content is not supported and may violate copyright law.**
-
-
-## 🛡️ Industrial Quality Stack
-
-This project adheres to **SOTA 14.1** industrial standards for high-fidelity agentic orchestration:
-
-- **Python (Core)**: [Ruff](https://astral.sh/ruff) for linting and formatting. Zero-tolerance for `print` statements in core handlers (`T201`).
-- **Webapp (UI)**: [Biome](https://biomejs.dev/) for sub-millisecond linting. Strict `noConsoleLog` enforcement.
-- **Protocol Compliance**: Hardened `stdout/stderr` isolation to ensure crash-resistant JSON-RPC communication.
-- **Automation**: [Justfile](./justfile) recipes for all fleet operations (`just lint`, `just fix`, `just dev`).
-- **Security**: Automated audits via `bandit` and `safety`.
-
-##  License
-
-MIT License - see LICENSE file for details.
-
-##  Acknowledgments
-
-- Directmedia Publishing for pioneering electronic literature in the 1990s
-- The German digital humanities community
-- FastMCP framework for MCP implementation
-
-
-##  Webapp Dashboard
-
-This MCP server includes a free, premium web interface for monitoring and control.
-By default, the web dashboard runs on port **10826**.
-*(Assigned ports: **10826** (Web dashboard frontend), **10827** (Web dashboard backend (API)))*
-
-To start the webapp:
-1. Navigate to the `webapp` (or `web`, `frontend`) directory.
-2. Run `start.bat` (Windows) or `./start.ps1` (PowerShell).
-3. Open `http://localhost:10826` in your browser.
+MIT — see [LICENSE](LICENSE).
