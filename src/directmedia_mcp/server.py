@@ -5,8 +5,9 @@ Directmedia MCP Server - Access to Directmedia Publishing Digitale Bibliothek
 
 import json
 import os
-from typing import Any
+from typing import Annotated, Any, Literal
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastmcp import FastMCP
@@ -16,6 +17,7 @@ from pydantic import BaseModel, Field
 from .epub_converter import batch_convert_library, convert_volume_to_epub
 from .library import DirectmediaLibrary
 from .logging_config import get_logger
+from .textgrid import TextGridClient
 
 logger = get_logger("directmedia_mcp")
 
@@ -166,7 +168,10 @@ async def get_volume_info(volume_id: str) -> dict[str, Any]:
 @mcp.tool()
 async def search_text(query: str, volume_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
     """
-    Search for text across volumes
+    Search decoded volume text (case-insensitive substring, linear scan).
+
+    Results carry position = record index, usable as get_text_content(start_pos=...).
+    Scanning all volumes is slow (millions of records); pass volume_id when you can.
 
     Args:
         query: Search query (supports basic text matching)
@@ -190,24 +195,25 @@ async def search_text(query: str, volume_id: str | None = None, limit: int = 20)
 @mcp.tool()
 async def get_text_content(volume_id: str, start_pos: int = 0, length: int = 1000) -> dict[str, Any]:
     """
-    Extract text content from a volume
+    Decode book text from a volume's TEXT.DKI, page by page.
+
+    TEXT.DKI is a sequence of records (roughly one printed page each). Whole records are
+    returned until about `length` characters; continue with start_pos=next_pos.
 
     Args:
-        volume_id: Volume ID to extract from
-        start_pos: Starting position in the text database
-        length: Number of characters to extract
+        volume_id: Volume ID to extract from (e.g. 'DB005')
+        start_pos: Index of the first record (page) to return, 0-based
+        length: Approximate maximum number of characters to return
+
+    Returns:
+        {volume_id, start_position, next_pos (None at end), total_records, records_returned,
+        length, content, sources (original source files), print_pages, format} or {error}.
     """
     if library is None:
         return {"error": "Library not initialized. Use set_library_path first."}
 
     try:
-        content = library.get_text_content(volume_id, start_pos, length)
-        return {
-            "volume_id": volume_id,
-            "start_position": start_pos,
-            "length": length,
-            "content": content,
-        }
+        return library.get_text_content(volume_id, start_pos, length)
     except Exception as e:
         logger.error(f"Error getting text content from {volume_id}: {e}")
         return {"error": f"Failed to get text content: {e!s}"}
@@ -362,6 +368,91 @@ async def batch_convert_to_epub(output_dir: str, volume_ids: list[str] | None = 
         return {"error": f"Batch conversion failed: {e!s}"}
 
 
+@mcp.tool(annotations={"readOnlyHint": False, "openWorldHint": True})
+async def textgrid(
+    operation: Annotated[
+        Literal["search", "get_text", "export_epub"],
+        Field(
+            description="search: find editions; get_text: page through an edition's plain text; export_epub: save EPUB"
+        ),
+    ],
+    query: Annotated[
+        str | None, Field(description="Search terms, e.g. 'Faust' or 'title:Minna'. Required for: search")
+    ] = None,
+    author: Annotated[str | None, Field(description="Optional author filter for search, e.g. 'Lessing'")] = None,
+    uri: Annotated[
+        str | None,
+        Field(description="TextGrid edition URI, e.g. 'textgrid:11d4b.0'. Required for: get_text, export_epub"),
+    ] = None,
+    limit: Annotated[int, Field(ge=1, le=100, description="search: max editions to return")] = 20,
+    start: Annotated[int, Field(ge=0, description="search: result offset; pass next_start from a previous call")] = 0,
+    offset: Annotated[
+        int, Field(ge=0, description="get_text: character offset; pass next_offset from a previous call")
+    ] = 0,
+    max_chars: Annotated[int, Field(ge=1, le=200000, description="get_text: max characters to return")] = 20000,
+    output_dir: Annotated[str | None, Field(description="export_epub: directory to write the EPUB into")] = None,
+) -> dict[str, Any]:
+    """Public-domain Digitale Bibliothek texts from the TextGrid Repository (no CDs needed).
+
+    [RATIONALE] One tool for the TextGrid source because all three operations share the same
+    edition URIs: search yields URIs, get_text and export_epub consume them. This path covers the
+    public-domain literature that zeno.org/TextGrid publish; copyrighted CD content is not there.
+
+    Operations:
+    - search (query, [author], [limit], [start]): editions in the Digitale Bibliothek project.
+    - get_text (uri, [offset], [max_chars]): one page of an edition's plain text.
+    - export_epub (uri, output_dir): writes TextGrid's EPUB rendering to disk (mutating).
+
+    ## Return Format
+    {"success": bool, "operation": str, "message": str, "result": {...}} or
+    {"success": false, "operation": str, "error": str, "suggestions": [str]}.
+    search result: {total_hits, start, returned, next_start, editions: [{uri, title, author,
+    edition_title, date, language}]}. get_text result: {uri, total_chars, offset, returned_chars,
+    next_offset, text, attribution}. export_epub result: {uri, path, bytes, attribution}.
+
+    ## Examples
+    textgrid(operation="search", query="Minna von Barnhelm", author="Lessing")
+    textgrid(operation="get_text", uri="textgrid:11d4b.0", offset=0, max_chars=5000)
+    textgrid(operation="export_epub", uri="textgrid:11d4b.0", output_dir="D:/books")
+
+    Notes:
+    - Credit "TextGrid" when reusing text (annotations CC-BY 3.0 DE; texts public domain).
+    - Editions can be large (Faust ~480k chars); page with next_offset instead of raising max_chars.
+    """
+    needs = {"search": ("query",), "get_text": ("uri",), "export_epub": ("uri", "output_dir")}
+    given = {"query": query, "uri": uri, "output_dir": output_dir}
+    missing = [p for p in needs[operation] if not given[p]]
+    if missing:
+        return {
+            "success": False,
+            "operation": operation,
+            "error": f"Missing required parameter(s) for {operation}: {', '.join(missing)}",
+            "suggestions": ["Run operation='search' first to obtain an edition uri."] if "uri" in missing else [],
+        }
+    client = TextGridClient()
+    try:
+        if operation == "search":
+            result = await client.search(query or "", author=author, limit=limit, start=start)
+            message = f"{result['total_hits']} editions match; returned {result['returned']}."
+        elif operation == "get_text":
+            result = await client.get_text(uri or "", offset=offset, max_chars=max_chars)
+            message = f"Returned {result['returned_chars']} of {result['total_chars']} characters."
+        else:
+            result = await client.export_epub(uri or "", output_dir or "")
+            message = f"Saved EPUB to {result['path']} ({result['bytes']} bytes)."
+        return {"success": True, "operation": operation, "message": message, "result": result}
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.exception("textgrid %s failed", operation)
+        return {
+            "success": False,
+            "operation": operation,
+            "error": str(exc),
+            "suggestions": ["Check the uri format ('textgrid:xxxx.0') and network access to textgridlab.org."],
+        }
+    finally:
+        await client.aclose()
+
+
 _mcp_http = mcp.http_app(path="/")
 app = FastAPI(title="Directmedia MCP API", version="0.1.0", lifespan=_mcp_http.lifespan)
 app.add_middleware(
@@ -409,6 +500,7 @@ async def api_status() -> dict[str, Any]:
             "analyze_volume_structure",
             "convert_volume_to_epub_file",
             "batch_convert_to_epub",
+            "textgrid",
         ],
     }
 
