@@ -15,6 +15,10 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .logging_config import get_logger
+
+logger = get_logger("directmedia_mcp.epub")
+
 # --- Constants & Templates ---
 
 OPF_TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
@@ -373,11 +377,11 @@ def create_single_epub(book_data: dict[str, Any], output_dir: str | Path) -> boo
                 ),
             )
 
-        print(f"[OK] Created EPUB: {filename}")
+        logger.info("Created EPUB: %s", filename)
         return True
 
-    except Exception as e:
-        print(f"[ERROR] Error creating {filename}: {e}")
+    except Exception:
+        logger.exception("Error creating %s", filename)
         return False
 
 
@@ -402,37 +406,14 @@ def convert_volume_to_epub(library_path: str | Path, volume_id: str, output_dir:
             results["errors"].append(f"Volume {volume_id} not found")
             return results
 
-        print(f"Converting volume: {volume_info.title}")
+        logger.info("Converting volume: %s", volume_info.title)
 
         # For now, create a single EPUB with all text content
         # Future enhancement: split into chapters/books based on structure
         try:
-            # Try to use existing extracted text first (if available)
-            extracted_txt_path = lib.library_path / volume_id / "Data" / "TEXT_extracted.txt"
-            if extracted_txt_path.exists():
-                # Use the working extracted text file
-                with open(extracted_txt_path, encoding="latin-1", errors="replace") as f:
-                    text_content = {"content": f.read()}
-                print("[OK] Using existing extracted text from TEXT_extracted.txt")
-            else:
-                # Fall back to decompressor (which may not work properly)
-                from .directmedia_decompressor import DirectmediaDecompressor
+            text_content = {"content": lib.get_full_text(volume_id)}
 
-                decompressor = DirectmediaDecompressor()
-                text_dki_path = lib.library_path / volume_id / "Data" / "TEXT.DKI"
-                if text_dki_path.exists():
-                    extraction_result = decompressor.extract_text_content(text_dki_path, max_sections=20)
-                    # Combine all extracted text sections
-                    extracted_texts = []
-                    for section in extraction_result["extracted_sections"]:
-                        for record in section.get("records", []):
-                            if record.get("text_content"):
-                                extracted_texts.append(record["text_content"])
-                    text_content = {"content": "\n\n".join(extracted_texts)}
-                else:
-                    text_content = lib.get_text_content(volume_id, length=50000)  # Fallback
-
-            if text_content and "content" in text_content:
+            if text_content["content"]:
                 book_data = {
                     "title": volume_info.title,
                     "author": "Various Authors",  # Could be enhanced to extract from content
@@ -444,7 +425,7 @@ def convert_volume_to_epub(library_path: str | Path, volume_id: str, output_dir:
 
                 if create_single_epub(book_data, output_dir):
                     results["epub_files_created"] = 1
-                    print(f"✓ Successfully converted volume {volume_id} to EPUB")
+                    logger.info("Converted volume %s to EPUB", volume_id)
                 else:
                     results["errors"].append(f"Failed to create EPUB for volume {volume_id}")
             else:
@@ -483,10 +464,10 @@ def batch_convert_library(
         if volume_filter:
             volumes_to_process = [v for v in volumes if v.id in volume_filter]
 
-        print(f"Converting {len(volumes_to_process)} volumes to EPUB...")
+        logger.info("Converting %d volumes to EPUB", len(volumes_to_process))
 
         for volume in volumes_to_process:
-            print(f"Processing volume: {volume.id} - {volume.title}")
+            logger.info("Processing volume: %s - %s", volume.id, volume.title)
 
             volume_result = convert_volume_to_epub(library_path, volume.id, output_dir)
 
@@ -502,12 +483,13 @@ def batch_convert_library(
     except Exception as e:
         results["errors"].append(f"Batch conversion failed: {e!s}")
 
-    print("\nBatch conversion complete:")
-    print(f"  Volumes processed: {results['total_volumes_processed']}")
-    print(f"  EPUB files created: {results['epub_files_created']}")
-    print(f"  Output directory: {results['output_dir']}")
-    if results["errors"]:
-        print(f"  Errors encountered: {len(results['errors'])}")
+    logger.info(
+        "Batch conversion complete: %d processed, %d EPUBs, %d errors, output %s",
+        results["total_volumes_processed"],
+        results["epub_files_created"],
+        len(results["errors"]),
+        results["output_dir"],
+    )
 
     return results
 

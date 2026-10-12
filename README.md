@@ -7,8 +7,10 @@
   <a href="https://github.com/PrefectHQ/fastmcp"><img src="https://img.shields.io/badge/FastMCP-3.2-7c5cfc?style=flat-square" alt="FastMCP"></a>
 </p>
 
-> **Status: experimental / mission ongoing.** The Directmedia `TEXT.DKI` body-text format is **not cracked yet**.
-> This server can enumerate volumes and read some metadata, but it **cannot reliably extract book text** from the CDs.
+> **Status (2026-10-12): `TEXT.DKI` decoded.** Book text is extracted from 72 of 73 text volumes; 2,281,483 of
+> 2,281,484 records pass the full-library gate, and spot checks against TextGrid's independent transcription match at
+> 98%. Still open: the table-of-contents tree (`TREE.DKI`), the Russian volume DB006's character mapping, and the
+> `INDEX.*` search files.
 
 > 📖 **[Installation Guide](INSTALL.md)** — quick start, manual setup, and troubleshooting
 
@@ -29,35 +31,26 @@ converted to TEI XML (see [Public-domain texts without the CDs](#public-domain-t
 |------|-------|
 | Volume discovery (`list_volumes`, `get_volume_info`) | Works on a local library folder |
 | `TREE.DKI` (table of contents) | Partial — on some volumes it is plain CP1252 text and reads fine |
-| `TEXT.DKI` (book body text) | **Not decoded.** Header and offset table understood; the packed payload codec is unknown |
-| `search_text`, `get_text_content` | Return heuristic byte scrapes, not faithful text — do not trust the output |
-| EPUB export | Wraps whatever the heuristic produced; not usable as real books yet |
+| `TEXT.DKI` (book body text) | **Decoded** ([format spec](docs/DKI_FORMAT.md)); 72/73 volumes, DB006 (Russian) needs a font map |
+| `get_text_content` | Real text, paged by record (about one printed page), with print page numbers and source file |
+| `search_text` | Real text, but a linear scan; slow across the biggest volumes |
+| EPUB export | Real text, one EPUB per volume (not yet split into works) |
 | `INDEX.*`, `LINKS.*`, images, audio | Not analysed |
 
-An earlier version of this README claimed "TEXT.DKI decompression working" and "101 volumes accessible". **That was
-wrong** — the "structured records, not compressed" theory did not survive contact with real volumes. The loose
-`reverse_engineer_*.py` / `*huffman*.py` scripts in the repo root are from that failed attempt and are kept only for
-reference.
+An earlier version of this README claimed text extraction worked when it did not. The loose `reverse_engineer_*.py` /
+`*huffman*.py` scripts in the repo root are from that failed attempt and are kept only for reference.
 
-## What we know about TEXT.DKI
+## How TEXT.DKI was cracked
 
-The reversing work happens in **[reversing-mcp](https://github.com/sandraschi/reversing-mcp)** (Ghidra + ReVa against
-`Digibib5.exe`). Its running notes are the source of truth:
-`reversing-mcp/docs/status.md` and `reversing-mcp/docs/DIGIBIB_DECOMPILE_PLAN.md`.
+`TEXT.DKI` is **not compressed**. Earlier attempts treated the ~400 KB offset table at the start of the file as packed
+data. The records behind it are byte-coded token streams: words in CP1252, spacing, line breaks, layout and metadata
+tokens. The exact token sizes came from `Digibib5.exe` itself: Ghidra headless decompilation of the line scanner
+(`FUN_00614bb4`) led to an `int32` size table at VA `0x00763554`. With that table, every record of every volume parses
+to its exact boundary. Full spec: [docs/DKI_FORMAT.md](docs/DKI_FORMAT.md). Re-run the gate any time:
 
-Summary of findings so far:
-
-- **Two on-disk families.** DB006-style files start with magic `0x001924CC`, then `0x00000004`, then a dword count;
-  DB002/DB008-style files have a per-volume first dword and `0x00067200` at offset 4, followed by an ascending dword
-  offset table.
-- **Loader identified.** `FUN_00616af0` in `Digibib5.exe` reads the 12-byte header and a `uint32[count]` offset table.
-  Line layout goes through `FUN_00613458` → `FUN_00616dc0` / `FUN_00614bb4`.
-- **Not zlib.** The embedded zlib is only used for PNG decoding; nothing traced connects it to `TEXT.DKI`.
-- **Open:** the payload codec itself, and why no traced loader in this `Digibib5.exe` build accepts the `0x67200`
-  family at all (possibly a different reader build).
-
-Next planned steps: use TextGrid plain text of the same works as **known plaintext** against `TEXT.DKI` records, and do a
-dynamic pass (hook the decoded line buffer in `Digibib5.exe`) instead of more static archaeology.
+```powershell
+uv run python scripts/dki_gate.py "L:\Multimedia Files\Written Word\Digitale Bibliothek"
+```
 
 ## Public-domain texts without the CDs
 
@@ -70,14 +63,13 @@ If you only need **public-domain** works, you do not need to crack DKI at all:
   - Bulk download (texts only, ~390 MB): `https://textgridlab.org/download/digitale-bibliothek/literatur-nur-texte-2.zip`
   - Per-object export: `https://textgridlab.org/1.0/aggregator/{text|epub}/textgrid:<id>`
 
-Copyrighted CD content (lexika such as Killy, editorial commentary, modern translations) is **not** on TextGrid —
-that is what the DKI reversing is still for.
+Copyrighted CD content (lexika such as Killy, editorial commentary, modern translations) is **not** on TextGrid.
+For that you need the CDs and the DKI decoder. TextGrid's Digibib project covers the **literature** collection
+(Lessing, Goethe, Busch...); philosophers such as Kant or Nietzsche are not in it.
 
-A TextGrid-backed source for this server is planned, not implemented.
+The `textgrid` tool searches, reads and exports these editions without the CDs.
 
 ## MCP tools
-
-All tools exist; see the status table above for what their output is worth.
 
 | Tool | Purpose |
 |------|---------|
@@ -86,10 +78,11 @@ All tools exist; see the status table above for what their output is worth.
 | `get_volume_info(volume_id)` | Volume metadata and file inventory |
 | `analyze_volume_structure(volume_id)` | File-format overview of a volume |
 | `get_navigation_tree(volume_id)` | TOC from `TREE.DKI` (partial) |
-| `search_text(query, volume_id, limit)` | Experimental — heuristic, unreliable |
-| `get_text_content(volume_id, start_pos, length)` | Experimental — heuristic, unreliable |
-| `convert_volume_to_epub_file(volume_id, output_dir)` | Experimental |
-| `batch_convert_to_epub(output_dir, volume_ids)` | Experimental |
+| `search_text(query, volume_id, limit)` | Substring search over decoded text; `position` = record index |
+| `get_text_content(volume_id, start_pos, length)` | Decoded text from record `start_pos`; page on with `next_pos` |
+| `convert_volume_to_epub_file(volume_id, output_dir)` | One EPUB per volume from decoded text |
+| `batch_convert_to_epub(output_dir, volume_ids)` | Same, for several volumes |
+| `textgrid(operation, ...)` | Public-domain editions from TextGrid: `search`, `get_text`, `export_epub` |
 
 ## Quick start
 

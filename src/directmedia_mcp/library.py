@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .directmedia_decompressor import DirectmediaDecompressor
+from .dki_text import DkiFormatError, TextDki, find_text_dki
 from .logging_config import get_logger
 
 logger = get_logger("directmedia_mcp.library")
@@ -158,104 +158,102 @@ class DirectmediaLibrary:
         results.sort(key=lambda r: r.position)
         return results[:limit]
 
+    def _text_dki_path(self, volume_id: str) -> Path | None:
+        return find_text_dki(self.library_path / volume_id)
+
     def _search_volume_text(self, volume_id: str, query: str, limit: int) -> list[SearchResult]:
-        """Search text in a specific volume"""
-        # For now, implement basic text extraction and search
-        # This is a simplified implementation - real implementation would use INDEX files
+        """Case-insensitive substring search over every decoded record of one volume.
 
-        results = []
-        text_content = self.get_text_content(volume_id, 0, 50000)  # First 50KB
-
-        if "content" in text_content:
-            content = text_content["content"].lower()
-            query_lower = query.lower()
-
-            pos = 0
-            while pos < len(content) and len(results) < limit:
-                found_pos = content.find(query_lower, pos)
-                if found_pos == -1:
-                    break
-
-                # Extract preview around the match
-                start = max(0, found_pos - 50)
-                end = min(len(content), found_pos + len(query) + 50)
-                preview = content[start:end]
-
+        Linear scan (no use of the INDEX.* files yet): fine for one volume, slow across the
+        largest ones (DB125 has 600k records).
+        """
+        path = self._text_dki_path(volume_id)
+        if path is None or limit <= 0:
+            return []
+        results: list[SearchResult] = []
+        needle = query.lower()
+        with TextDki(path) as dki:
+            for k in range(dki.count):
+                try:
+                    rec = dki.decode_record(k)
+                except DkiFormatError as exc:
+                    logger.warning("Skipping undecodable record %s/%d: %s", volume_id, k, exc)
+                    continue
+                hay = rec.text.lower()
+                found = hay.find(needle)
+                if found < 0:
+                    continue
+                start = max(0, found - 60)
+                end = min(len(rec.text), found + len(query) + 60)
+                preview = " ".join(rec.text[start:end].split())
                 results.append(
                     SearchResult(
                         volume_id=volume_id,
-                        title=f"Match in {volume_id}",
-                        content_preview="..." + preview + "...",
-                        position=found_pos,
+                        title=rec.source or f"Record {k}",
+                        content_preview=f"...{preview}...",
+                        position=k,
                     )
                 )
-
-                pos = found_pos + 1
-
+                if len(results) >= limit:
+                    break
         return results
 
     def get_text_content(self, volume_id: str, start_pos: int = 0, length: int = 1000) -> dict[str, Any]:
-        """Extract text content from a volume"""
+        """Decode text starting at record (page) start_pos, up to length characters.
 
-        volume = self.get_volume_info(volume_id)
-        if not volume or not volume.has_text:
-            return {"error": f"Volume {volume_id} not found or has no text"}
-
-        # Try different possible paths for TEXT.DKI
-        possible_paths = [
-            self.library_path / volume_id / "Data" / "TEXT.DKI",
-            self.library_path / volume_id / "DATA" / "TEXT.DKI",
-            self.library_path / volume_id / "Text.dki",
-            self.library_path / volume_id / "TEXT.DKI",
-        ]
-
-        text_dki_path = None
-        for path in possible_paths:
-            if path.exists():
-                text_dki_path = path
-                break
-
-        if text_dki_path is None:
-            return {"error": f"TEXT.DKI not found for volume {volume_id}. Tried: {[str(p) for p in possible_paths]}"}
-
+        Whole records are returned, so the first record is always included even if longer
+        than length. Continue with start_pos=next_pos.
+        """
+        path = self._text_dki_path(volume_id)
+        if path is None:
+            return {"error": f"Volume {volume_id} not found or has no TEXT.DKI"}
         try:
-            # Use the proper decompressor to extract text content
-            decompressor = DirectmediaDecompressor()
-            result = decompressor.extract_text_content(text_dki_path, max_sections=10)
-
-            # Combine all extracted text from sections
-            all_text_parts = []
-            total_records = 0
-
-            for section in result["extracted_sections"]:
-                if "records" in section:
-                    for record in section["records"]:
-                        if record.get("text_content"):
-                            all_text_parts.append(record["text_content"])
-                            total_records += 1
-
-            # Combine all text
-            full_text = "\n\n".join(all_text_parts)
-
-            # Apply start_pos and length limits if specified
-            if start_pos > 0:
-                full_text = full_text[start_pos:]
-            if len(full_text) > length:
-                full_text = full_text[:length]
-
-            return {
-                "volume_id": volume_id,
-                "start_position": start_pos,
-                "length": len(full_text.encode("utf-8")),
-                "content": full_text,
-                "sections_processed": len(result["extracted_sections"]),
-                "total_records_found": total_records,
-                "extraction_errors": len(result.get("errors", [])),
-            }
-
-        except Exception as e:
-            logger.error(f"Error reading text from {volume_id}: {e}")
+            with TextDki(path) as dki:
+                if not 0 <= start_pos < dki.count:
+                    return {"error": f"start_pos {start_pos} out of range 0..{dki.count - 1} for {volume_id}"}
+                parts: list[str] = []
+                sources: list[str] = []
+                pages: list[int] = []
+                total = 0
+                k = start_pos
+                while k < dki.count and (not parts or total < length):
+                    rec = dki.decode_record(k)
+                    parts.append(rec.text)
+                    total += len(rec.text) + 2
+                    pages.extend(rec.pages)
+                    if rec.source and rec.source not in sources:
+                        sources.append(rec.source)
+                    k += 1
+                content = "\n\n".join(parts)
+                return {
+                    "volume_id": volume_id,
+                    "start_position": start_pos,
+                    "next_pos": k if k < dki.count else None,
+                    "total_records": dki.count,
+                    "records_returned": k - start_pos,
+                    "length": len(content),
+                    "content": content,
+                    "sources": sources,
+                    "print_pages": pages,
+                    "format": f"{dki.family}v{dki.version}",
+                }
+        except (DkiFormatError, OSError) as e:
+            logger.exception("Error reading text from %s", volume_id)
             return {"error": f"Failed to read text: {e!s}"}
+
+    def get_full_text(self, volume_id: str) -> str:
+        """Decode every record of a volume into one string (records separated by blank lines)."""
+        path = self._text_dki_path(volume_id)
+        if path is None:
+            raise ValueError(f"Volume {volume_id} has no TEXT.DKI")
+        parts = []
+        with TextDki(path) as dki:
+            for k in range(dki.count):
+                try:
+                    parts.append(dki.decode_record(k).text)
+                except DkiFormatError as exc:
+                    logger.warning("Skipping undecodable record %s/%d: %s", volume_id, k, exc)
+        return "\n\n".join(parts)
 
     def get_navigation_tree(self, volume_id: str) -> dict[str, Any]:
         """Get navigation tree (table of contents) for a volume"""
@@ -409,7 +407,7 @@ class DirectmediaLibrary:
     def _get_file_description(self, filename: str) -> str:
         """Get description for known file types"""
         descriptions = {
-            "TEXT.DKI": "Haupttextdatenbank (komprimierter Volltext)",
+            "TEXT.DKI": "Haupttextdatenbank (tokenisierter Volltext, unkomprimiert)",
             "TREE.DKA": "Navigationsbaum (Inhaltsverzeichnis)",
             "TREE.DKI": "Navigationsbaum (Strukturdaten)",
         }
