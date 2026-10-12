@@ -19,7 +19,7 @@ export default function FloatingChat() {
   const [chat, setChat] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [provider, setProvider] = useState(() => localStorage.getItem("llm_provider") || "ollama");
+  const [provider] = useState(() => localStorage.getItem("llm_provider") || "ollama");
   const [model, setModel] = useState(() => localStorage.getItem("llm_model") || "");
   const [modelList, setModelList] = useState<string[]>([]);
   const [skillName, setSkillName] = useState("");
