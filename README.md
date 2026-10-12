@@ -137,7 +137,28 @@ An alternative Digibib reader in `web_sota/`: frontend on port **10826**, backen
   on demand (Lessing about 2 s, Philosophie about 25 s) into `%LOCALAPPDATA%\directmedia-mcp\index`, or
   `DIRECTMEDIA_INDEX_DIR`.
 
-REST API for the reader: `/api/v1/reader/{volumes, volumes/<id>/toc, volumes/<id>/records/<n>, search, index}`.
+- **Semantic search** (Search page, "Semantic" mode): finds passages by meaning, not exact words. For example,
+  "unglückliche Liebe, die im Selbstmord endet" works without knowing the title. Results show the matching works
+  first, then the closest passages. Each volume needs its semantic index built once from its volume page (about
+  90 passages/s on CPU; Goethe takes about 7 minutes).
+- **Ask the library** (chat button, bottom right): a local LLM (LM Studio on :1234 or Ollama on :11434) answers from
+  passages retrieved from your semantically indexed volumes. Answers cite sources as [1], [2]..., and the citations
+  link to the page in the reader. Untick "Answer from my library" for a plain chat.
+
+REST API for the reader: `/api/v1/reader/{volumes, volumes/<id>/toc, volumes/<id>/records/<n>, search, index,
+semantic/search, semantic/index}`; chat: `/api/llm/{providers, chat}`.
+
+### Semantic search stack (deviation from the fleet RAG default)
+
+LanceDB + FastEmbed as in `standards/ai-rag-2026.md`, with two documented deviations because the corpus is German:
+
+| Setting | Fleet default | Here | Why |
+|---------|---------------|------|-----|
+| Embedding model | `BAAI/bge-small-en-v1.5` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | The English model cannot handle German. In a benchmark on DB004 (Goethe), MiniLM found *Faust* and the *Italienische Reise* for thematic queries at ~45 pages/s. `jina-embeddings-v2-base-de` was no better and ~10x slower (~5 pages/s), and `potion-multilingual` was fast but wrong. |
+| Chunking | 1000 / 200 chars | 600 / 120 chars | MiniLM reads only ~128 tokens. |
+
+Override the model with `DIRECTMEDIA_EMBED_MODEL`; indexes built with another model show as "stale". Indexes live in
+`%LOCALAPPDATA%\directmedia-mcp\index\semantic`.
 
 ## Legal
 

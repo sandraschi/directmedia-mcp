@@ -3,6 +3,7 @@
 import re
 import sqlite3
 from collections.abc import Callable
+from dataclasses import asdict
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from .dki_tree import TocEntry, breadcrumb, entry_for_record, load_toc
 from .library import DirectmediaLibrary
 from .logging_config import get_logger
 from .search_index import HIT_END, HIT_START, SearchIndex
+from .semantic_index import SemanticIndex
 
 logger = get_logger("directmedia_mcp.reader_api")
 
@@ -21,6 +23,7 @@ router = APIRouter(prefix="/api/v1/reader", tags=["reader"])
 _VOLUME_ID = re.compile(r"^[A-Za-z0-9_-]{2,16}$")
 _library_provider: Callable[[], DirectmediaLibrary | None] = lambda: None  # noqa: E731
 index = SearchIndex()
+semantic = SemanticIndex()
 
 
 def set_library_provider(provider: Callable[[], DirectmediaLibrary | None]) -> None:
@@ -203,3 +206,62 @@ def search(
         "not_indexed": not_indexed,
         "markers": [HIT_START, HIT_END],
     }
+
+
+# ---- semantic search (LanceDB) ----------------------------------------------------------------
+
+
+@router.get("/semantic/index")
+def semantic_status() -> list[dict[str, Any]]:
+    lib = _library()
+    out = []
+    for vol in lib.list_volumes():
+        path = find_text_dki(Path(vol.path))
+        if path is not None:
+            out.append(asdict(semantic.status(vol.id, path)))
+    return out
+
+
+@router.post("/semantic/index/{volume_id}")
+def semantic_build(volume_id: str) -> dict[str, Any]:
+    """Queue the semantic index build of one volume (one build runs at a time; poll GET /semantic/index)."""
+    path = _dki_path(volume_id)
+    st = semantic.status(volume_id, path)
+    if st.state == "ready":
+        return asdict(st)
+    return asdict(semantic.start_build(volume_id, path, _volume_dir(volume_id)))
+
+
+def semantic_ready_volumes(requested: list[str] | None = None) -> tuple[list[str], list[str]]:
+    """(ready, not_ready) volume ids among the requested ones (default: all volumes with text)."""
+    lib = _library()
+    ids = requested or [v.id for v in lib.list_volumes()]
+    ready, missing = [], []
+    for vid in ids:
+        path = find_text_dki(lib.library_path / vid) if _VOLUME_ID.match(vid) else None
+        if path is None:
+            continue
+        (ready if semantic.status(vid, path).state == "ready" else missing).append(vid)
+    return ready, missing
+
+
+@router.get("/semantic/search")
+def semantic_search(
+    q: str = Query(..., min_length=2, max_length=500),
+    volumes: str | None = Query(None, description="Comma-separated volume ids; default: all indexed volumes"),
+    limit: int = Query(20, ge=1, le=50),
+) -> dict[str, Any]:
+    """Meaning-based search: passages closest to the query, plus the works they belong to."""
+    wanted = [v.strip() for v in volumes.split(",") if v.strip()] if volumes else None
+    ready, not_indexed = semantic_ready_volumes(wanted)
+    hits = semantic.search(q, ready, limit=limit)
+    works: dict[tuple[str, str], dict[str, Any]] = {}
+    for h in hits:
+        key = (h["volume_id"], h["work"])
+        w = works.setdefault(
+            key, {"volume_id": h["volume_id"], "work": h["work"], "record": h["record"], "score": 0.0, "hits": 0}
+        )
+        w["score"] = max(w["score"], h["score"])
+        w["hits"] += 1
+    ranked_works = sorted(works.values(), key=lambda w: (-w["hits"], -w["score"]))
+    return {"query": q, "hits": hits, "works": ranked_works, "not_indexed": not_indexed, "model": semantic.model_name}

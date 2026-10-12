@@ -16,7 +16,7 @@ from fastmcp import FastMCP
 from fastmcp.server import create_proxy
 from pydantic import BaseModel, Field
 
-from . import reader_api
+from . import llm_api, reader_api
 from .epub_converter import batch_convert_library, convert_volume_to_epub
 from .library import DirectmediaLibrary
 from .logging_config import get_logger
@@ -582,6 +582,7 @@ async def startup_init_library() -> None:
 
 reader_api.set_library_provider(lambda: library)
 app.include_router(reader_api.router)
+app.include_router(llm_api.router)
 app.mount("/mcp", _mcp_http)
 
 
